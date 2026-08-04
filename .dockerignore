@@ -1,0 +1,31 @@
+# Controle de versao e artefatos de planejamento (nao entram na imagem).
+.git
+.superpowers/
+
+# Testes e documentacao de projeto (nao sao runtime).
+tests/
+docs/
+
+# Config/segredos e ambiente local (variaveis vem do compose/--env-file).
+.env
+CLAUDE.md
+AGENTS.md
+
+# Ambiente virtual e cache Python — reinstalado via requirements.txt.
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Dados locais gerados em runtime (indice FAISS, etc.) — nao sao insumo de
+# build; docs_fontes/ (transcricao do Doc1) e os Doc2-6.pdf SAO insumo e
+# permanecem fora deste arquivo, so o Doc1.pdf original (rasterizado, nao
+# usado pela ingestao) e a prova em si ficam de fora explicitamente abaixo.
+data_local/
+
+# PDFs que nao sao insumo do bootstrap: Doc1.pdf foi substituido pela
+# transcricao em docs_fontes/doc1_rolamentos.md; o PDF da prova nunca e
+# usado pela aplicacao. Doc2.pdf..Doc6.pdf permanecem (necessarios ao RAG,
+# copiados explicitamente nos Dockerfiles).
+Doc1.pdf
+Prova para Dev Full Stack - I.A. e Python.pdf

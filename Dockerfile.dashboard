@@ -1,0 +1,24 @@
+# Imagem do dashboard (Streamlit) — consome a API via HTTP, nao acessa o
+# banco nem o RAG diretamente.
+FROM python:3.12-slim
+WORKDIR /srv
+
+# Dependencias primeiro para aproveitar cache de camada do Docker. Usa o
+# mesmo requirements.txt da API (streamlit/plotly ja incluidos ali).
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# dashboard/app.py importa app.data.labels (normalizacao de rotulo para o
+# grafico de historico) e scripts.simulator (build_payload do simulador de
+# eventos) — por isso app/ e scripts/ inteiros entram na imagem, nao so os
+# modulos usados hoje.
+COPY app/ app/
+COPY scripts/ scripts/
+COPY dashboard/ dashboard/
+
+# banner.xlsx: dashboard le direto (aba Historico) sem passar pela API.
+COPY banner.xlsx .
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "dashboard/app.py", "--server.address", "0.0.0.0"]

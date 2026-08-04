@@ -1,0 +1,27 @@
+# Imagem da API (FastAPI + bootstrap: dataset, kNN, RAG, LLM router).
+FROM python:3.12-slim
+WORKDIR /srv
+
+# Dependencias primeiro para aproveitar cache de camada do Docker.
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app/ app/
+COPY scripts/ scripts/
+COPY migrations/ migrations/
+
+# Transcricao versionada do Doc1 (PDF rasterizado, sem texto extraivel).
+# scripts/bootstrap.py ingere docs_fontes/doc1_rolamentos.md no lugar do
+# Doc1.pdf original — ver PDF_MAP em scripts/bootstrap.py.
+COPY docs_fontes/ docs_fontes/
+
+# alembic.ini: migracoes no start. banner.xlsx: dataset default (data_file).
+# Doc2-Doc6.pdf: fontes RAG ingeridas no bootstrap (Doc1.pdf NAO entra aqui,
+# pois e rasterizado e foi substituido pela transcricao em docs_fontes/).
+COPY alembic.ini banner.xlsx Doc2.pdf Doc3.pdf Doc4.pdf Doc5.pdf Doc6.pdf ./
+
+EXPOSE 8000
+
+# Aplica migracoes e sobe a API. O bootstrap (dataset, kNN, embeddings,
+# indice FAISS em memoria) roda no lifespan da app — ver app/api/main.py.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.api.main:app --host 0.0.0.0 --port 8000"]
