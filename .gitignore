@@ -1,0 +1,34 @@
+# Ambientes virtuais
+venv/
+.venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Configuracao local / segredos
+.env
+
+# Dados e indices locais
+data_local/
+*.faiss
+
+# Cache de ferramentas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Streamlit
+.streamlit/
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
