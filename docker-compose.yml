@@ -1,14 +1,17 @@
+# Portas publicadas apenas em 127.0.0.1: o stack é de uso local (demonstração).
+# Para expor a outro host, troque o bind e proteja os serviços antes (ver
+# README, seção "Postura de segurança do protótipo").
 services:
   postgres:
     image: postgres:16
     environment:
-      POSTGRES_USER: senai
-      POSTGRES_PASSWORD: senai
-      POSTGRES_DB: manutencao
-    ports: ["5432:5432"]
+      POSTGRES_USER: ${POSTGRES_USER:-senai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-senai}
+      POSTGRES_DB: ${POSTGRES_DB:-manutencao}
+    ports: ["127.0.0.1:5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U senai"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-senai}"]
       interval: 5s
       retries: 10
 
@@ -26,7 +29,7 @@ services:
   #      compose (ou apenas nao o inicie).
   ollama:
     image: ollama/ollama:latest
-    ports: ["11434:11434"]
+    ports: ["127.0.0.1:11434:11434"]
     volumes: [ollama:/root/.ollama]
     deploy:
       resources:
@@ -39,11 +42,11 @@ services:
   api:
     build: {context: ., dockerfile: Dockerfile.api}
     environment:
-      DATABASE_URL: postgresql+psycopg://senai:senai@postgres:5432/manutencao
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-senai}:${POSTGRES_PASSWORD:-senai}@postgres:5432/${POSTGRES_DB:-manutencao}
       OLLAMA_BASE_URL: http://ollama:11434
       LLM_MODE: ${LLM_MODE:-offline}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     depends_on:
       postgres: {condition: service_healthy}
 
@@ -51,7 +54,7 @@ services:
     build: {context: ., dockerfile: Dockerfile.dashboard}
     environment:
       API_URL: http://api:8000
-    ports: ["8501:8501"]
+    ports: ["127.0.0.1:8501:8501"]
     depends_on: [api]
 
 volumes:

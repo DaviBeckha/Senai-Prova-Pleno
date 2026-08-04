@@ -297,6 +297,23 @@ python -m scripts.simulator --n 10 --intervalo 3
 | `DATA_FILE` | `banner.xlsx` | Dataset histórico |
 | `FAISS_DIR` | `data_local/faiss` | Reservado para uso futuro — o índice atual é reconstruído em memória a cada bootstrap, sem persistência em disco |
 
+### 6.4 Postura de segurança do protótipo
+
+Este protótipo foi desenhado para rodar **localmente** (estação de trabalho do avaliador ou
+demonstração), e a configuração reflete isso de forma deliberada:
+
+- Todas as portas do `docker-compose.yml` são publicadas apenas em `127.0.0.1` — nenhum
+  serviço (Postgres, Ollama, API, dashboard) fica acessível a partir da rede.
+- As credenciais do Postgres são parametrizáveis por variável de ambiente
+  (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`), com defaults simples adequados apenas
+  ao uso local.
+- A API **não tem autenticação** — decisão de escopo documentada na seção 9. O ponto mais
+  sensível é o `POST /documentos`: como os documentos registrados alimentam diretamente as
+  respostas do assistente, em produção esse endpoint sem controle de acesso permitiria que
+  um agente mal-intencionado "envenenasse" a base de conhecimento com procedimentos falsos.
+  O caminho de produção é autenticação (token/OIDC), aprovação humana de documentos antes
+  da indexação e segregação de rede por planta.
+
 ## 7. Endpoints (exemplos de request/response)
 
 Todas as rotas estão documentadas interativamente em `/docs` (Swagger, gerado
@@ -520,7 +537,9 @@ Fora de escopo deliberado para o prazo desta entrega (YAGNI), registrado aqui co
 natural de evolução:
 
 - **Autenticação e multiusuário**: hoje a API não tem controle de acesso; um ambiente de
-  produção real exigiria autenticação (JWT/OAuth) e escopo por planta/linha de produção.
+  produção real exigiria autenticação (JWT/OAuth), escopo por planta/linha de produção e,
+  em especial, controle de quem pode registrar documentos orientativos — ver a análise de
+  risco na seção 6.4.
 - **Streaming de resposta**: o redator online (OpenAI) e o local (Ollama) suportam streaming
   nativamente; expor isso via SSE/WebSocket melhoraria a percepção de latência no chat.
 - **MLOps e monitoramento de produção**: versionamento de modelo de embeddings,
