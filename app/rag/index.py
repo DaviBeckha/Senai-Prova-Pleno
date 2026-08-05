@@ -6,6 +6,7 @@ except ImportError:  # ambiente de teste sem faiss
     faiss = None
 
 from app.rag.chunking import Chunk
+from app.rag.search import SearchHit
 
 
 class VectorIndex:
@@ -27,13 +28,34 @@ class VectorIndex:
             self._indexes[family].add(vecs)
             self._chunks[family].extend(items)
 
-    def search(self, query: str, doc_family: str, k: int = 4) -> list[Chunk]:
+    def search(
+        self,
+        query: str,
+        doc_family: str,
+        k: int = 4,
+        min_score: float = 0.55,
+    ) -> list[SearchHit]:
+        """Trechos mais proximos da consulta, com o score que os justifica.
+
+        Os embeddings sao normalizados (EmbeddingService.embed), entao o
+        produto interno do IndexFlatIP e o cosseno — e `min_score` e um corte
+        de similaridade comparavel entre consultas.
+        """
         if doc_family not in self._indexes:
             return []
         vec = np.array(self._embedder.embed([query], "query"), dtype="float32")
         k = min(k, len(self._chunks[doc_family]))
-        _, idx = self._indexes[doc_family].search(vec, k)
-        return [self._chunks[doc_family][i] for i in idx[0] if i >= 0]
+        scores, indexes = self._indexes[doc_family].search(vec, k)
+        hits = [
+            SearchHit(self._chunks[doc_family][index], float(score))
+            for score, index in zip(scores[0], indexes[0], strict=True)
+            if index >= 0 and float(score) >= min_score
+        ]
+        return sorted(hits, key=lambda hit: hit.score, reverse=True)
+
+    def chunks_for_family(self, doc_family: str) -> tuple[Chunk, ...]:
+        """Todos os trechos da familia em ordem documental (nao por score)."""
+        return tuple(self._chunks.get(doc_family, ()))
 
 
 def _new_index(dim: int):
@@ -52,6 +74,11 @@ class _PyFallbackIndex:
         self._vecs = np.vstack([self._vecs, vecs])
 
     def search(self, vec: np.ndarray, k: int):
+        if not len(self._vecs) or k <= 0:
+            return (
+                np.empty((1, 0), dtype="float32"),
+                np.empty((1, 0), dtype="int64"),
+            )
         scores = self._vecs @ vec[0]
         order = np.argsort(-scores)[:k]
         return scores[order][None, :], order[None, :]

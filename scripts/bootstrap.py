@@ -74,6 +74,9 @@ def build_state(settings: Settings) -> AppState:
 
     pipeline = PrescriptivePipeline(engine, df, registry, index,
                                     make_router(settings),
-                                    routers=make_routers(settings))
+                                    routers=make_routers(settings),
+                                    rag_k=settings.rag_k,
+                                    rag_min_score=settings.rag_min_score,
+                                    rag_complete_max_chars=settings.rag_complete_max_chars)
     return AppState(pipeline=pipeline, registry=registry, index=index, df=df,
                     session_factory=factory)

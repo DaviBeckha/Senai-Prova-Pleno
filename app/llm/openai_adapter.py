@@ -1,6 +1,6 @@
 from openai import OpenAI
 
-from app.llm.base import PROMPT_SISTEMA, DiagnosisContext, build_user_prompt
+from app.llm.base import RenderContext, build_user_prompt, system_prompt_for
 
 
 class OpenAIRenderer:
@@ -10,11 +10,11 @@ class OpenAIRenderer:
         self._client = OpenAI(api_key=api_key, timeout=timeout)
         self._model = model
 
-    def render(self, ctx: DiagnosisContext) -> str:
+    def render(self, ctx: RenderContext) -> str:
         resp = self._client.responses.create(
             model=self._model,
-            instructions=PROMPT_SISTEMA,
+            instructions=system_prompt_for(ctx),
             input=build_user_prompt(ctx),
-            max_output_tokens=700,
+            max_output_tokens=900,
         )
         return resp.output_text

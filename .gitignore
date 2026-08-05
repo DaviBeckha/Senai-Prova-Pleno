@@ -14,6 +14,7 @@ dist/
 
 # Configuracao local / segredos
 .env
+docker-compose.override.yml
 
 # Dados e indices locais
 data_local/
