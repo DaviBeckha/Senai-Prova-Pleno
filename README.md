@@ -139,7 +139,7 @@ linhas** — 1.932/5.000) tem, em colunas que deveriam ser puramente numéricas,
 valores `datetime` (artefato de geração/exportação do arquivo). Um `float(valor)` ingênuo
 levanta `TypeError` nessas células.
 
-O tratamento é defensivo em duas camadas independentes:
+O tratamento é defensivo em três camadas independentes:
 - `SimilarityEngine` (`app/similarity/engine.py`), tanto no `fit` quanto no `query`, converte
   cada coluna com `pd.to_numeric(..., errors="coerce")` antes de imputar (`SimpleImputer`,
   estratégia `mean`) e escalar.
@@ -148,6 +148,11 @@ O tratamento é defensivo em duas camadas independentes:
   realmente não é conversível (fora do intervalo representável por `pandas.Timestamp`),
   substitui por `0.0` e imprime um aviso no console citando a coluna afetada — o sistema
   nunca envia `null` para a API (que rejeitaria com 422).
+- `app/data/dataset_store.py::seed_if_empty`, no seed único do `banner.xlsx` para a tabela
+  `sensor_readings` do PostgreSQL, aplica a mesma coerção antes do `INSERT`: sem ela, a
+  primeira célula `datetime` numa coluna `double precision` derruba o lote inteiro
+  (`psycopg.errors.DatatypeMismatch`). O resultado dessa coerção é `NULL` no banco — a mesma
+  semântica de "não conversível" das outras duas camadas.
 
 ### c) Doc1.pdf é um documento digitalizado sem camada de texto
 
@@ -182,6 +187,20 @@ rótulo real e diagnóstico obtido. Essa é uma escolha deliberada de transparê
 final (`family` dominante) continua sendo usada normalmente pelo guardrail e pelo RAG, mas
 o cliente da API pode auditar o quão disputada foi aquela votação em vez de receber uma
 falsa certeza.
+
+### e) Onde o histórico rotulado mora, e o que não entra nele
+
+O histórico rotulado vive na tabela `sensor_readings` do PostgreSQL, não mais em memória a
+partir de um arquivo lido a cada subida. No primeiro boot de um volume de banco novo, a API
+semeia essa tabela a partir do `banner.xlsx` (uma única vez — medido em ~126s para as
+166.796 linhas); nos boots seguintes o dataset é lido direto do banco (medido em ~5,5-6,5s) e o
+xlsx não é mais tocado.
+
+Isso é deliberadamente distinto da tabela `events`: eventos novos recebidos em `POST
+/eventos` são gravados ali como log operacional, mas **não** entram no corpus consultado
+pelo kNN. O rótulo devolvido para um evento novo é uma **predição** (o `family` majoritário
+entre os vizinhos mais próximos no histórico), nunca uma confirmação — não há feedback loop
+que promova esses eventos a novo dado rotulado de treino/consulta.
 
 ## 5. Guardrail anti-alucinação
 
@@ -283,8 +302,13 @@ docker compose up --build
 docker exec -it senai-prova-pleno-ollama-1 ollama pull qwen2.5:7b-instruct
 # (o nome exato do container pode variar — conferir com `docker compose ps`)
 
-# 4. Acompanhar o bootstrap da API (dataset, kNN, embeddings e índice FAISS
-#    sobem em memória no lifespan da aplicação — pode levar 1-2 min na primeira subida)
+# 4. Acompanhar o bootstrap da API (kNN, embeddings e índice FAISS sobem em
+#    memória no lifespan da aplicação). Com um volume de Postgres novo, esse
+#    primeiro boot também semeia a tabela sensor_readings a partir do
+#    banner.xlsx (~2 min, medido em ~126s para 166.796 linhas); nos boots
+#    seguintes o dataset já está no banco e essa etapa cai para poucos
+#    segundos — o tempo total do bootstrap nesse caso é dominado pelo
+#    carregamento do modelo de embeddings, não mais pelo dataset.
 curl http://localhost:8000/health
 
 # 5. Abrir o dashboard
@@ -317,8 +341,10 @@ copy .env.example .env
 # Aplicar as migrations
 alembic upgrade head
 
-# Subir a API (bootstrap roda no lifespan: carrega banner.xlsx, ajusta o kNN,
-# carrega o modelo de embeddings e ingere os 6 documentos)
+# Subir a API (bootstrap roda no lifespan: garante o dataset em
+# sensor_readings — semeia do banner.xlsx só se a tabela estiver vazia,
+# senão lê direto do Postgres —, ajusta o kNN, carrega o modelo de
+# embeddings e ingere os 6 documentos)
 uvicorn app.api.main:app --reload
 
 # Em outro terminal, subir o dashboard
@@ -340,7 +366,7 @@ python -m scripts.simulator --n 10 --intervalo 3
 | `OPENAI_MODEL` | `gpt-5.6-luna` | Modelo online |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Modelo de embeddings do RAG |
 | `EMBEDDING_DIM` | `768` | Dimensão dos vetores |
-| `DATA_FILE` | `banner.xlsx` | Dataset histórico |
+| `DATA_FILE` | `banner.xlsx` | Fonte do seed único de `sensor_readings`; só é lido se a tabela estiver vazia (volume de Postgres novo) — nos boots seguintes o histórico vem do banco |
 | `FAISS_DIR` | `data_local/faiss` | Reservado para uso futuro — o índice atual é reconstruído em memória a cada bootstrap, sem persistência em disco |
 | `RAG_K` | `4` | Trechos recuperados por família em uma busca focada |
 | `RAG_MIN_SCORE` | `0.82` | Cosseno mínimo para um trecho contar como evidência (ver "Evidência e relevância no chat") |
@@ -590,7 +616,9 @@ app/
 ├── data/
 │   ├── labels.py            # normalize_label(): 151 rótulos brutos -> 17 famílias canônicas
 │   ├── loader.py              # load_dataset(): lê banner.xlsx, valida colunas, normaliza fault
-│   ├── models.py                # SQLAlchemy: Event, Diagnosis, Document
+│   ├── dataset_store.py         # ensure_dataset(): seed único de sensor_readings a partir do
+│   │                             # xlsx (se vazia); load_from_db() em todo boot
+│   ├── models.py                # SQLAlchemy: Event, Diagnosis, Document, SensorReading
 │   ├── db.py                     # make_session_factory()
 │   └── registry.py                # DocumentRegistry: seed dos 6 docs + registro de novos
 ├── similarity/
@@ -619,14 +647,16 @@ scripts/
 └── simulator.py         # CLI: publica eventos reais do xlsx em /eventos (gateway industrial)
 
 migrations/
-└── versions/0001_initial.py   # Alembic: schema inicial (events, diagnoses, documents)
+└── versions/
+    ├── 0001_initial.py          # Alembic: schema inicial (events, diagnoses, documents)
+    └── 0002_sensor_readings.py  # Alembic: tabela sensor_readings (histórico do banner.xlsx)
 
 docs_fontes/
 └── doc1_rolamentos.md   # transcrição do Doc1.pdf (PDF escaneado, sem texto extraível)
 
 docker-compose.yml, Dockerfile.api, Dockerfile.dashboard, .dockerignore
 requirements.txt, .env.example, alembic.ini
-banner.xlsx, Doc2.pdf..Doc6.pdf   # dataset e base documental
+banner.xlsx, Doc2.pdf..Doc6.pdf   # seed do histórico (uma vez por volume) e base documental
 docs/arquitetura.md   # roteiro de demo da entrevista + mapa de critérios de avaliação
 ```
 
