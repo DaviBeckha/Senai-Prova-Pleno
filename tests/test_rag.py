@@ -34,6 +34,28 @@ def test_index_search_filters_by_family():
     # apenas chunk/score).
     assert hits[0].chunk.doc_family == "correia"
 
+def test_chunk_text_fallback_pula_texto_so_whitespace():
+    # PDF escaneado: PdfReader.extract_text() sem camada de texto extraivel
+    # devolve "" por pagina; "\n".join(paginas) produz um texto so com
+    # quebras de linha — sem secoes numeradas, cai no fallback por tamanho
+    # fixo (max_chars). Esse fallback nao pode gerar chunk de puro whitespace
+    # (evidencia-lixo que antes fazia a familia parecer "documentada" sem
+    # conteudo real).
+    text = "\n\n   \n\t\n"
+    chunks = chunk_text(text, doc_family="rolamento_outer", source="Doc1")
+    assert chunks == []
+
+
+def test_chunk_text_fallback_mantem_conteudo_real_sem_secoes():
+    # Contra-teste: texto real sem numeracao de secao continua indo pelo
+    # fallback e gerando chunks normalmente — a mudanca so descarta
+    # segmentos 100% whitespace, nao pode afetar conteudo com texto de fato.
+    text = "Texto solto sem numeracao de secao, com conteudo relevante sobre correias."
+    chunks = chunk_text(text, doc_family="correia", source="Doc4")
+    assert len(chunks) == 1
+    assert chunks[0].text == text
+
+
 def test_chunk_file_dispatches_markdown_by_extension(tmp_path):
     md_path = tmp_path / "doc1_rolamentos.md"
     md_path.write_text(

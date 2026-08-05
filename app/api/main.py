@@ -110,6 +110,10 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         if len(content) > _MAX_UPLOAD_BYTES:
             raise HTTPException(422, "arquivo excede 10 MB")
 
+        # Verificar deduplicação ANTES de gravar/ingerir (evita chunks órfãos no índice)
+        if state.registry.has_document(family, title):
+            raise HTTPException(409, "documento já cadastrado para esta família com este título")
+
         uploads_dir = Path(get_settings().uploads_dir)
         uploads_dir.mkdir(parents=True, exist_ok=True)
         dest = uploads_dir / _safe_filename(family, file.filename or "")
@@ -122,6 +126,12 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
 
         try:
             n = ingest_pdf(str(dest), family, state.index)
+        except UnicodeDecodeError as exc:
+            # UnicodeDecodeError herda de ValueError — precisa ser capturado
+            # ANTES do except ValueError abaixo, senao um .md/.txt fora de
+            # UTF-8 recebe a mensagem (falsa) de extensão não suportada.
+            dest.unlink(missing_ok=True)
+            raise HTTPException(422, "arquivo não está em UTF-8") from exc
         except ValueError as exc:
             dest.unlink(missing_ok=True)
             raise HTTPException(422, "extensão não suportada (use .pdf, .md ou .txt)") from exc
@@ -129,7 +139,28 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
             dest.unlink(missing_ok=True)
             raise
 
-        state.registry.register(family, title, str(dest))
+        if n == 0:
+            # Sem chunks utilizaveis (arquivo vazio, so whitespace, ou PDF
+            # escaneado sem texto extraivel): registrar a familia aqui
+            # deixaria ela marcada como "documentada" com contencao vazia no
+            # indice — todo diagnostico cairia em "sem trechos" e a
+            # retentativa com o mesmo titulo tomaria 409.
+            dest.unlink(missing_ok=True)
+            raise HTTPException(422, "documento sem conteúdo utilizável")
+
+        try:
+            state.registry.register(family, title, str(dest))
+        except ValueError as exc:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(409, "documento já cadastrado para esta família com este título") from exc
+        except Exception:
+            # Arquivo e removido, mas os chunks ja ingeridos permanecem no
+            # VectorIndex em memoria ate o proximo restart (nao ha remocao
+            # de chunks); o estado se autocorrige no reboot, que reindexa
+            # so os documentos efetivamente registrados (ver scripts/bootstrap.py).
+            dest.unlink(missing_ok=True)
+            raise
+
         return {"chunks": n}
 
     return app
