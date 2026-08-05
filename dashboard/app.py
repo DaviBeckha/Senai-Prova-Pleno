@@ -145,7 +145,7 @@ with aba_chat:
 
 with aba_doc:
     st.subheader("Registrar novo documento orientativo")
-    up = st.file_uploader("PDF do procedimento", type=["pdf"])
+    up = st.file_uploader("Documento do procedimento", type=["pdf", "md", "txt"])
     fam = st.text_input("Família da falha (ex.: ventoinha)")
     titulo = st.text_input("Título do documento")
     if st.button("Registrar") and up and fam and titulo:

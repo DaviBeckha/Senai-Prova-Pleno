@@ -634,7 +634,7 @@ resposta declara explicitamente que não representa o documento completo.
 
 ### `POST /documentos` — registrar novo documento (habilita a família imediatamente)
 
-Multipart form: `file` (PDF), `family` (ex. `ventoinha`), `title`.
+Multipart form: `file` (`.pdf`, `.md` ou `.txt`), `family` (ex. `ventoinha`), `title`.
 
 ```
 POST /documentos
