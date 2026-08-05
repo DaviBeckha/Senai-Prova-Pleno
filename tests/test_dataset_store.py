@@ -26,7 +26,10 @@ def test_sensor_reading_table_has_expected_columns():
     assert cols["external_id"].nullable
 
 
-def _mini_xlsx(tmp_path, n_inner=3, n_normal=2):
+def _mini_xlsx(tmp_path, n_inner=3, n_normal=2, artifact_cell=None):
+    """artifact_cell: (indice_da_linha, coluna, valor) para injetar sujeira
+    (ex.: artefato de datetime) numa coluna de feature, como no banner.xlsx
+    real (README §4b)."""
     rows = []
     for i in range(n_inner):
         rows.append({"id": i + 1, "created_at": f"2026-06-0{i+1}T10:00:00+00:00",
@@ -38,6 +41,9 @@ def _mini_xlsx(tmp_path, n_inner=3, n_normal=2):
         for c in FEATURE_COLUMNS:
             r.setdefault(c, 0.5)
     rows[0]["z_kurtosis"] = np.nan  # NaN precisa virar NULL no banco
+    if artifact_cell is not None:
+        idx, col, value = artifact_cell
+        rows[idx][col] = value
     path = tmp_path / "mini.xlsx"
     pd.DataFrame(rows).to_excel(path, index=False)
     return str(path)
@@ -134,3 +140,30 @@ def test_ensure_dataset_end_to_end(tmp_path):
     # segunda chamada: sem xlsx no caminho, direto do banco
     df2 = ensure_dataset(factory, str(tmp_path / "sumiu.xlsx"))
     assert len(df2) == 5
+
+
+def test_seed_coerces_datetime_artifacts_to_null(tmp_path):
+    from app.data.dataset_store import load_from_db, seed_if_empty
+    from app.data.models import SensorReading
+
+    factory = _factory()
+    # artefato de datetime numa coluna de feature (sujeira real do banner.xlsx,
+    # README §4b) — sem coercao isso estoura DatatypeMismatch no Postgres.
+    path = _mini_xlsx(
+        tmp_path,
+        artifact_cell=(1, "x_kurtosis", pd.Timestamp("2026-06-01 10:00:00")),
+    )
+    assert seed_if_empty(factory, path) == 5  # nao estoura excecao no insert
+
+    with factory() as session:
+        null_x_kurtosis = session.scalar(
+            select(func.count()).select_from(SensorReading)
+            .where(SensorReading.x_kurtosis.is_(None)))
+        assert null_x_kurtosis == 1  # artefato virou NULL
+
+    df = load_from_db(factory)
+    assert df["x_kurtosis"].isna().sum() == 1  # NULL volta como NaN
+    # demais linhas/colunas numericas preservadas (nao viraram NULL/NaN)
+    assert df["rpm"].notna().all()
+    other_rows = df.loc[df["x_kurtosis"].notna(), "x_kurtosis"]
+    assert (other_rows == 0.5).all()

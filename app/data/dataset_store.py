@@ -31,6 +31,12 @@ def seed_if_empty(session_factory, xlsx_path: str) -> int:
     df = load_dataset(xlsx_path)
     payload = df[["id", "created_at", "fault", "family", "kind", *FEATURE_COLUMNS]]
     payload = payload.rename(columns={"id": "external_id"})
+    # Coage SOMENTE as colunas de feature: o banner.xlsx real tem artefatos
+    # de datetime nelas (~38% das linhas, sujeira documentada no README §4b)
+    # que quebram o insert no Postgres tipado (DatatypeMismatch). Mesma
+    # estrategia do SimilarityEngine.fit/query — artefato vira NULL.
+    for name in FEATURE_COLUMNS:
+        payload[name] = pd.to_numeric(payload[name], errors="coerce")
     # astype(object) antes do where: sem ele o pandas recoloca NaN em colunas
     # float e o banco receberia NaN em vez de NULL.
     payload = payload.astype(object).where(pd.notna(payload), None)
