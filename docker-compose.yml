@@ -49,7 +49,9 @@ services:
       OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
       LLM_MODE: ${LLM_MODE:-offline}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      UPLOADS_DIR: /srv/data_uploads
     ports: ["127.0.0.1:8000:8000"]
+    volumes: [uploads:/srv/data_uploads]
     depends_on:
       postgres: {condition: service_healthy}
 
@@ -63,3 +65,4 @@ services:
 volumes:
   pgdata:
   ollama:
+  uploads:
