@@ -16,6 +16,27 @@ def _ctx():
     )
 
 
+class _FakeOllamaResponse:
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"message": {"content": "{\"steps\": [], \"unanswered\": []}"}}
+
+
+def _capture_ollama_post(monkeypatch):
+    captured = {}
+
+    def fake_post(url, json=None, timeout=None):
+        captured["url"] = url
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return _FakeOllamaResponse()
+
+    monkeypatch.setattr("app.llm.ollama_adapter.httpx.post", fake_post)
+    return captured
+
+
 class BoomRenderer:
     name = "boom"
 
@@ -38,3 +59,24 @@ def test_router_degrades_to_fallback():
     assert outcome.degraded is True
     assert outcome.renderer == "template"
     assert "correia" in outcome.text
+
+
+def test_ollama_renderer_defaults_reach_httpx(monkeypatch):
+    from app.llm.ollama_adapter import OllamaRenderer
+
+    captured = _capture_ollama_post(monkeypatch)
+    OllamaRenderer("http://x:11434", "qwen2.5:7b-instruct").render(_ctx())
+    assert captured["timeout"] == 300.0
+    assert captured["json"]["options"]["num_ctx"] == 8192
+    # opcoes existentes preservadas (reprodutibilidade)
+    assert captured["json"]["options"]["temperature"] == 0
+    assert captured["json"]["options"]["seed"] == 42
+
+
+def test_ollama_renderer_custom_limits_reach_httpx(monkeypatch):
+    from app.llm.ollama_adapter import OllamaRenderer
+
+    captured = _capture_ollama_post(monkeypatch)
+    OllamaRenderer("http://x:11434", "m", timeout=42.0, num_ctx=2048).render(_ctx())
+    assert captured["timeout"] == 42.0
+    assert captured["json"]["options"]["num_ctx"] == 2048

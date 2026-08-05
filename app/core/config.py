@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     llm_mode: str = "offline"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b-instruct"
+    # Geracao em CPU e lenta (7b ~1,3 tok/s nesta classe de maquina): 300s
+    # cobre modelo pequeno em CPU e nunca e atingido na maquina alvo (GPU).
+    ollama_timeout: float = 300.0
+    # Janela de contexto pedida ao Ollama. O default 4096 do servidor trunca
+    # SILENCIOSAMENTE o inicio do prompt (o contrato JSON) em perguntas de
+    # escopo completo — 8192 elimina esse modo de falha.
+    ollama_num_ctx: int = 8192
     openai_api_key: str | None = None
     openai_model: str = "gpt-5.6-luna"
     embedding_model: str = "intfloat/multilingual-e5-base"
