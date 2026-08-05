@@ -1,4 +1,4 @@
-"""Isolamento e relevancia por familia no indice vetorial (Plano 01 / Task 3).
+"""Isolamento e relevancia por familia no indice vetorial.
 
 As 4 familias `rolamento_*` (outer/inner/ball/combination) sao ingeridas do
 MESMO arquivo `docs_fontes/doc1_rolamentos.md` (ver app/rag/family_sections.py).
@@ -11,13 +11,19 @@ Embedder: fake determinista (mesmo padrao de tests/test_rag.py), NAO o e5
 real. Medido localmente: import + load() do EmbeddingService com
 intfloat/multilingual-e5-base (modelo ja em cache local) levou ~47s so no
 load(), muito acima do limite de 10s para esta suite. As features do fake
-foram escolhidas para responder pela mesma razao semantica que os testes
-descrevem: "pista interna" e "pista externa" so aparecem, no doc1, nos
-titulos/corpo das secoes 4.2/13 e 4.1/12 respectivamente (nenhuma outra secao
-do documento contem esses bigramas — a secao 9, por exemplo, fala em "falha
-interna", nao em "pista interna"), entao um match por contagem literal desses
-bigramas reproduz a mesma ordenacao que um embedding semantico real produziria
-para estas consultas pontuais.
+contam os bigramas "pista interna" e "pista externa" (case-insensitive), que
+aparecem no doc1 em mais de uma secao — inclusive na secao 11
+("Frequencias Caracteristicas dos Rolamentos"), comum as duas familias, que
+menciona ambos os bigramas uma vez cada. O que garante a secao 12/13 no topo
+NAO e exclusividade de vocabulario, e sim a MARGEM de score: medido via
+_INDEX.search, a consulta "defeito na pista interna" sob rolamento_inner
+produz 13.=1.0, 4.2.=0.9487, 11.=0.8165, e o restante (secoes comuns sem o
+bigrama) em 0.7071 — o mesmo padrao se repete, com os papeis trocados, para
+"defeito na pista externa" sob rolamento_outer (12.=1.0, 4.1.=0.9487,
+11.=0.8165). A secao-alvo sempre vence porque e a UNICA cujo vetor e copia
+escalar exata do vetor da consulta (mesma proporcao entre as 4 features);
+qualquer outra secao com o bigrama mas texto adicional (4.1/4.2) ou com os
+dois bigramas ao mesmo tempo (11.) tem cosseno estritamente menor.
 """
 
 from pathlib import Path
