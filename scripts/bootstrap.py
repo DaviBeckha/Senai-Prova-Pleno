@@ -35,14 +35,18 @@ def make_routers(settings: Settings) -> dict[str, Router]:
     # answer_question em app/pipeline.py.
     fallback_offline = TemplateRenderer()
     fallback_online = TemplateRenderer()
-    ollama = OllamaRenderer(settings.ollama_base_url, settings.ollama_model)
+    ollama = OllamaRenderer(settings.ollama_base_url, settings.ollama_model,
+                            timeout=settings.ollama_timeout,
+                            num_ctx=settings.ollama_num_ctx)
     if settings.openai_api_key:
         online_primary = OpenAIRenderer(settings.openai_api_key,
                                         settings.openai_model)
     else:
         # sem chave: degrada silenciosamente para ollama no modo online
         online_primary = OllamaRenderer(settings.ollama_base_url,
-                                        settings.ollama_model)
+                                        settings.ollama_model,
+                                        timeout=settings.ollama_timeout,
+                                        num_ctx=settings.ollama_num_ctx)
     return {
         "offline": Router(primary=ollama, fallback=fallback_offline),
         "online": Router(primary=online_primary, fallback=fallback_online),
