@@ -206,6 +206,13 @@ class FakeRegistry:
     def __init__(self):
         self.registered = []
 
+    def has_document(self, family, title=None):
+        """Fake has_document para compatibilidade (dedup é checado antes nestes testes)."""
+        if title is None:
+            return any(f == family for f, _, _ in self.registered)
+        normalized_title = title.strip().lower()
+        return any(f == family and t.strip().lower() == normalized_title for f, t, _ in self.registered)
+
     def register(self, family, title, source_path):
         self.registered.append((family, title, source_path))
 
@@ -369,29 +376,28 @@ def test_documentos_filename_sem_extensao_retorna_422():
     assert "extensão não suportada" in r.json()["detail"]
 
 
-def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch):
-    # POST /documentos duas vezes com mesmo family+title → 409
+def _client_com_registry_e_index(tmp_path, monkeypatch):
+    """Client com registry em SQLite, index fake e uploads em tmp_path."""
     from app.data.registry import DocumentRegistry
     from app.rag.index import VectorIndex
 
+    session_factory = _session_factory_memoria()
+    monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    registry = DocumentRegistry(session_factory)
+    app = create_app(skip_bootstrap=True)
+    state = AppState(pipeline=FakePipeline(), registry=registry,
+                     index=VectorIndex(FakeEmbedder()), df=None,
+                     session_factory=session_factory)
+    app.dependency_overrides[get_state] = lambda: state
+    return TestClient(app), registry, state.index
+
+
+def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch):
+    # POST /documentos duas vezes com mesmo family+title → 409
     try:
-        factory = create_engine("sqlite+pysqlite:///:memory:",
-                                connect_args={"check_same_thread": False},
-                                poolclass=StaticPool, future=True)
-        Base.metadata.create_all(factory)
-        session_factory = sessionmaker(bind=factory, expire_on_commit=False, future=True)
-
-        monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
-        get_settings.cache_clear()
-
-        registry = DocumentRegistry(session_factory)
-        app = create_app(skip_bootstrap=True)
-        state = AppState(pipeline=FakePipeline(), registry=registry,
-                         index=VectorIndex(FakeEmbedder()), df=None,
-                         session_factory=session_factory)
-        app.dependency_overrides[get_state] = lambda: state
-        client = TestClient(app)
-
+        client, _, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
         content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
 
         # Primeiro upload deve suceder
@@ -414,29 +420,10 @@ def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch
         get_settings.cache_clear()
 
 
-def test_documentos_dedup_remove_arquivo_ao_retornar_409(tmp_path, monkeypatch):
-    # Se register falha com dedup, o arquivo gravado em disco deve ser removido
-    from app.data.registry import DocumentRegistry
-    from app.rag.index import VectorIndex
-
+def test_documentos_dedup_arquivo_nao_grava_quando_409(tmp_path, monkeypatch):
+    # Dedup checado ANTES de gravar → 409 retorna sem arquivo em disco
     try:
-        factory = create_engine("sqlite+pysqlite:///:memory:",
-                                connect_args={"check_same_thread": False},
-                                poolclass=StaticPool, future=True)
-        Base.metadata.create_all(factory)
-        session_factory = sessionmaker(bind=factory, expire_on_commit=False, future=True)
-
-        monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
-        get_settings.cache_clear()
-
-        registry = DocumentRegistry(session_factory)
-        app = create_app(skip_bootstrap=True)
-        state = AppState(pipeline=FakePipeline(), registry=registry,
-                         index=VectorIndex(FakeEmbedder()), df=None,
-                         session_factory=session_factory)
-        app.dependency_overrides[get_state] = lambda: state
-        client = TestClient(app)
-
+        client, _, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
         content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
 
         # Primeiro upload
@@ -448,8 +435,9 @@ def test_documentos_dedup_remove_arquivo_ao_retornar_409(tmp_path, monkeypatch):
         assert r1.status_code == 200
         files_after_first = list(tmp_path.iterdir())
         assert len(files_after_first) == 1
+        first_file = files_after_first[0]
 
-        # Segundo upload (dedup failure)
+        # Segundo upload (dedup failure imediato)
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
@@ -457,8 +445,90 @@ def test_documentos_dedup_remove_arquivo_ao_retornar_409(tmp_path, monkeypatch):
         )
         assert r2.status_code == 409
 
-        # Arquivo não deve ter aumentado (o novo deve ter sido removido)
+        # Arquivo não deve ter aumentado (o segundo nem foi gravado)
         files_after_second = list(tmp_path.iterdir())
         assert len(files_after_second) == 1
+        assert files_after_second[0] == first_file
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_dedup_chunks_nao_crescem_apos_409(tmp_path, monkeypatch):
+    # Critical: chunks_for_family não cresce após 409 (dedup é ANTES da ingestão)
+    try:
+        client, _, index = _client_com_registry_e_index(tmp_path, monkeypatch)
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        # Primeiro upload
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r1.status_code == 200
+        chunks_after_first = len(index.chunks_for_family("correia"))
+        assert chunks_after_first > 0
+
+        # Segundo upload (dedup antes da ingestão)
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r2.status_code == 409
+
+        # Chunks não devem ter aumentado
+        chunks_after_second = len(index.chunks_for_family("correia"))
+        assert chunks_after_second == chunks_after_first
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_dedup_titulo_normalizado_com_espacos(tmp_path, monkeypatch):
+    # Título normalizado: " Doc Teste " deve ser tratado como "Doc Teste"
+    try:
+        client, _, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        # Primeiro upload com espaços
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": " Doc Teste "},
+        )
+        assert r1.status_code == 200
+
+        # Segundo upload sem espaços → 409
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r2.status_code == 409
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypatch):
+    # Título normalizado: "DOC TESTE" deve ser tratado como "Doc Teste"
+    try:
+        client, _, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        # Primeiro upload
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r1.status_code == 200
+
+        # Segundo upload com case diferente → 409
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "doc teste"},
+        )
+        assert r2.status_code == 409
     finally:
         get_settings.cache_clear()

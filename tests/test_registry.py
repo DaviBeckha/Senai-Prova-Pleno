@@ -40,3 +40,25 @@ def test_register_same_family_different_title_is_allowed():
     reg.register("ventoinha", "Proc X", "docs_novos/proc_x.pdf")
     reg.register("ventoinha", "Proc Y", "docs_novos/proc_y.pdf")
     assert reg.has_document("ventoinha")
+
+
+def test_register_title_normalized_strips_whitespace():
+    reg = _registry()
+    reg.register("ventoinha", "Proc X", "docs_novos/proc_x.pdf")
+    # Tentar registrar com espaço em branco → deve normalizar e detectar dedup
+    try:
+        reg.register("ventoinha", " Proc X ", "docs_novos/proc_x_v2.pdf")
+        assert False, "esperava ValueError"
+    except ValueError as exc:
+        assert "já existe documento" in str(exc)
+
+
+def test_register_title_normalized_case_insensitive():
+    reg = _registry()
+    reg.register("ventoinha", "Proc X", "docs_novos/proc_x.pdf")
+    # Tentar registrar com case diferente → deve normalizar e detectar dedup
+    try:
+        reg.register("ventoinha", "proc x", "docs_novos/proc_x_v2.pdf")
+        assert False, "esperava ValueError"
+    except ValueError as exc:
+        assert "já existe documento" in str(exc)

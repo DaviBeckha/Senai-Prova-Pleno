@@ -110,6 +110,10 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         if len(content) > _MAX_UPLOAD_BYTES:
             raise HTTPException(422, "arquivo excede 10 MB")
 
+        # Verificar deduplicação ANTES de gravar/ingerir (evita chunks órfãos no índice)
+        if state.registry.has_document(family, title):
+            raise HTTPException(409, "documento já cadastrado para esta família com este título")
+
         uploads_dir = Path(get_settings().uploads_dir)
         uploads_dir.mkdir(parents=True, exist_ok=True)
         dest = uploads_dir / _safe_filename(family, file.filename or "")
@@ -134,6 +138,9 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         except ValueError as exc:
             dest.unlink(missing_ok=True)
             raise HTTPException(409, "documento já cadastrado para esta família com este título") from exc
+        except Exception:
+            dest.unlink(missing_ok=True)
+            raise
 
         return {"chunks": n}
 

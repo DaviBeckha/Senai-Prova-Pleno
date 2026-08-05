@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.data.models import Document
@@ -32,23 +32,44 @@ class DocumentRegistry:
                     session.add(Document(family=family, title=title, source_path=path))
             session.commit()
 
-    def has_document(self, family: str) -> bool:
+    def has_document(self, family: str, title: str | None = None) -> bool:
+        """Check if a document exists by family, or by family + normalized title.
+
+        If title is provided, normalized (strip + lower) for comparison.
+        If title is None, checks only by family (backward compat).
+        """
         with self._factory() as session:
-            return session.scalar(select(Document).where(Document.family == family)) is not None
+            if title is None:
+                return session.scalar(select(Document).where(Document.family == family)) is not None
+            normalized_title = title.strip().lower()
+            return session.scalar(
+                select(Document).where(
+                    (Document.family == family)
+                    & (func.lower(Document.title) == normalized_title)
+                )
+            ) is not None
 
     def register(self, family: str, title: str, source_path: str) -> None:
+        normalized_title = title.strip()
+        normalized_title_lower = normalized_title.lower()
         with self._factory() as session:
-            existing = session.scalar(
-                select(Document).where(
-                    (Document.family == family) & (Document.title == title)
+            try:
+                existing = session.scalar(
+                    select(Document).where(
+                        (Document.family == family)
+                        & (func.lower(Document.title) == normalized_title_lower)
+                    )
                 )
-            )
-            if existing:
-                raise ValueError(
-                    "já existe documento com este título para esta família"
-                )
-            session.add(Document(family=family, title=title, source_path=source_path))
-            session.commit()
+                if existing:
+                    raise ValueError(
+                        "já existe documento com este título para esta família"
+                    )
+                session.add(Document(family=family, title=normalized_title, source_path=source_path))
+                session.commit()
+            except ValueError:
+                raise
+            except Exception:
+                raise
 
     def list_documents(self) -> list[Document]:
         with self._factory() as session:
