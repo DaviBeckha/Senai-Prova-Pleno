@@ -53,23 +53,18 @@ class DocumentRegistry:
         normalized_title = title.strip()
         normalized_title_lower = normalized_title.lower()
         with self._factory() as session:
-            try:
-                existing = session.scalar(
-                    select(Document).where(
-                        (Document.family == family)
-                        & (func.lower(Document.title) == normalized_title_lower)
-                    )
+            existing = session.scalar(
+                select(Document).where(
+                    (Document.family == family)
+                    & (func.lower(Document.title) == normalized_title_lower)
                 )
-                if existing:
-                    raise ValueError(
-                        "já existe documento com este título para esta família"
-                    )
-                session.add(Document(family=family, title=normalized_title, source_path=source_path))
-                session.commit()
-            except ValueError:
-                raise
-            except Exception:
-                raise
+            )
+            if existing:
+                raise ValueError(
+                    "já existe documento com este título para esta família"
+                )
+            session.add(Document(family=family, title=normalized_title, source_path=source_path))
+            session.commit()
 
     def list_documents(self) -> list[Document]:
         with self._factory() as session:

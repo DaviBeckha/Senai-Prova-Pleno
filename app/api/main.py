@@ -154,6 +154,10 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
             dest.unlink(missing_ok=True)
             raise HTTPException(409, "documento já cadastrado para esta família com este título") from exc
         except Exception:
+            # Arquivo e removido, mas os chunks ja ingeridos permanecem no
+            # VectorIndex em memoria ate o proximo restart (nao ha remocao
+            # de chunks); o estado se autocorrige no reboot, que reindexa
+            # so os documentos efetivamente registrados (ver scripts/bootstrap.py).
             dest.unlink(missing_ok=True)
             raise
 

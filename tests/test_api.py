@@ -298,11 +298,11 @@ def test_documentos_ingestao_falha_remove_arquivo_orfao(tmp_path, monkeypatch):
 
 
 def test_documentos_family_com_path_traversal_e_rejeitada(tmp_path, monkeypatch):
-    # PoC reportado na revisao: family="../../../evil_escape_poc" escapava
-    # do uploads_dir e gravava fora do diretorio esperado. uploads_dir aqui
-    # e um subdiretorio nao-criado de tmp_path (tmp_path e exclusivo deste
-    # teste) para conseguirmos provar que NADA foi escrito em lugar nenhum
-    # da arvore, nem dentro nem fora do uploads_dir.
+    # Cenario: family="../../../evil_escape_poc" escapava do uploads_dir e
+    # gravava fora do diretorio esperado. uploads_dir aqui e um subdiretorio
+    # nao-criado de tmp_path (tmp_path e exclusivo deste teste) para
+    # conseguirmos provar que NADA foi escrito em lugar nenhum da arvore,
+    # nem dentro nem fora do uploads_dir.
     uploads_dir = tmp_path / "uploads_dir"
     try:
         client, registry = _client_com_uploads(uploads_dir, monkeypatch)
