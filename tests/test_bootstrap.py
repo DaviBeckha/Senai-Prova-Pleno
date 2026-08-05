@@ -38,3 +38,18 @@ def test_make_routers_online_sem_chave_cai_para_ollama():
     routers = make_routers(Settings(llm_mode="offline", openai_api_key=None))
     assert routers["online"]._primary.name == "ollama"
     assert routers["online"]._fallback.name == "template"
+
+
+def test_make_routers_propagates_ollama_limits():
+    from app.core.config import Settings
+    from scripts.bootstrap import make_routers
+
+    settings = Settings(_env_file=None, openai_api_key=None, ollama_timeout=123.0, ollama_num_ctx=2048)
+    routers = make_routers(settings)
+    offline_primary = routers["offline"]._primary
+    assert offline_primary._timeout == 123.0
+    assert offline_primary._num_ctx == 2048
+    # modo online SEM chave degrada para Ollama — mesmos limites
+    online_primary = routers["online"]._primary
+    assert online_primary._timeout == 123.0
+    assert online_primary._num_ctx == 2048

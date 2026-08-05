@@ -251,6 +251,19 @@ sustentada pela citação sem introduzir números novos. **Um único passo repro
 rascunho inteiro** — meia resposta fundamentada e meia inventada continua sendo uma resposta
 inventada.
 
+**Comportamento medido:** o timeout de geração era fixo em 60s antes de virar `OLLAMA_TIMEOUT`;
+em uma estação sem GPU o `qwen2.5:7b` gera a ~1,3 tok/s e nenhuma resposta terminava dentro
+desse prazo — 100% das chamadas ao redator primário degradavam para o fallback extrativo por
+timeout, sem sequer chegar ao gate 3. Com `OLLAMA_TIMEOUT=300` e o modelo
+`qwen2.5:3b-instruct` (ambiente de desenvolvimento em CPU, via `.env`), uma bateria de 6
+gerações completou em 35–62s cada, sem nenhum timeout — mas o validador de
+fundamentação rejeitou as 6 no parse do JSON estruturado, todas com o mesmo erro
+(`steps.N.quote: Field required`): o modelo de 3B omite a citação literal que o contrato
+exige. Nos 6 casos o operador recebeu o fallback extrativo com as fontes recuperadas, nunca um
+texto sem validação — a contenção descrita acima segurou 100% das execuções observadas, ainda
+que por um motivo diferente do timeout original. Na estação alvo (GPU de 16 GB) o modelo 7b
+gera em segundos e esses limites não chegam a ser exercitados na prática.
+
 ### Comportamento de segurança e diante de pedidos adversariais
 
 | Pedido | Resultado |
@@ -361,7 +374,9 @@ python -m scripts.simulator --n 10 --intervalo 3
 | `DATABASE_URL` | `postgresql+psycopg://senai:senai@localhost:5432/manutencao` | Conexão com o Postgres |
 | `LLM_MODE` | `offline` | Modo padrão do redator (`offline` ou `online`); pode ser sobrescrito por requisição via campo `modo` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Endpoint do Ollama (offline) |
-| `OLLAMA_MODEL` | `qwen2.5:7b-instruct` | Modelo local |
+| `OLLAMA_MODEL` | `qwen2.5:7b-instruct` | Modelo local; repassado pelo compose (`.env` do host → serviço `api`) |
+| `OLLAMA_TIMEOUT` | `300` | Segundos até desistir da geração (default 300; na estação com GPU a resposta chega em segundos); repassado pelo compose (`.env` do host → serviço `api`) |
+| `OLLAMA_NUM_CTX` | `8192` | Janela de contexto pedida ao Ollama (default 8192; o default 4096 do servidor truncaria silenciosamente o início do prompt); repassado pelo compose (`.env` do host → serviço `api`) |
 | `OPENAI_API_KEY` | — | Chave da OpenAI (modo online); sem chave, o modo online degrada silenciosamente para o Ollama local |
 | `OPENAI_MODEL` | `gpt-5.6-luna` | Modelo online |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Modelo de embeddings do RAG |

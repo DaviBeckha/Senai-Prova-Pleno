@@ -44,6 +44,9 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-senai}:${POSTGRES_PASSWORD:-senai}@postgres:5432/${POSTGRES_DB:-manutencao}
       OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
+      OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
       LLM_MODE: ${LLM_MODE:-offline}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports: ["127.0.0.1:8000:8000"]
