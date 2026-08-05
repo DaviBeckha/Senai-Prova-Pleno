@@ -17,27 +17,20 @@ services:
 
   # Ollama local (modo offline / fallback do modo online sem OPENAI_API_KEY).
   #
-  # ATENCAO — GPU no Docker Desktop (Windows/WSL2): o bloco `deploy:` abaixo
-  # reserva uma GPU NVIDIA via nvidia-container-toolkit. Se a maquina nao
-  # tiver esse toolkit configurado, `docker compose up` falha ao subir o
-  # servico ollama. Duas saidas:
-  #   1) Remover o bloco `deploy:` inteiro e rodar o Ollama em CPU dentro do
-  #      container (mais lento, porem funcional).
-  #   2) Usar o Ollama nativo do Windows (fora do Docker) e apontar a API
-  #      para ele via OLLAMA_BASE_URL=http://host.docker.internal:11434 no
-  #      servico `api` abaixo — nesse caso, remova o servico `ollama` deste
-  #      compose (ou apenas nao o inicie).
+  # CPU e o modo padrao oficial deste compose: sobe em qualquer maquina, sem
+  # dependencia de driver ou toolkit de GPU (mais lento, porem funcional e
+  # universal). Duas alternativas para acelerar:
+  #   1) GPU NVIDIA via override opt-in: docker compose -f docker-compose.yml
+  #      -f docker-compose.gpu.yml up --build (requer nvidia-container-toolkit
+  #      configurado no Docker).
+  #   2) Ollama nativo do Windows (fora do Docker), apontando a API para ele
+  #      via OLLAMA_BASE_URL=http://host.docker.internal:11434 no servico
+  #      `api` abaixo — nesse caso, remova o servico `ollama` deste compose
+  #      (ou apenas nao o inicie).
   ollama:
     image: ollama/ollama:latest
     ports: ["127.0.0.1:11434:11434"]
     volumes: [ollama:/root/.ollama]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   api:
     build: {context: ., dockerfile: Dockerfile.api}
