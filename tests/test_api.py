@@ -367,3 +367,98 @@ def test_documentos_filename_sem_extensao_retorna_422():
     )
     assert r.status_code == 422
     assert "extensão não suportada" in r.json()["detail"]
+
+
+def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch):
+    # POST /documentos duas vezes com mesmo family+title → 409
+    from app.data.registry import DocumentRegistry
+    from app.rag.index import VectorIndex
+
+    try:
+        factory = create_engine("sqlite+pysqlite:///:memory:",
+                                connect_args={"check_same_thread": False},
+                                poolclass=StaticPool, future=True)
+        Base.metadata.create_all(factory)
+        session_factory = sessionmaker(bind=factory, expire_on_commit=False, future=True)
+
+        monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
+        get_settings.cache_clear()
+
+        registry = DocumentRegistry(session_factory)
+        app = create_app(skip_bootstrap=True)
+        state = AppState(pipeline=FakePipeline(), registry=registry,
+                         index=VectorIndex(FakeEmbedder()), df=None,
+                         session_factory=session_factory)
+        app.dependency_overrides[get_state] = lambda: state
+        client = TestClient(app)
+
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        # Primeiro upload deve suceder
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r1.status_code == 200
+
+        # Segundo upload com mesma familia+titulo deve retornar 409
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r2.status_code == 409
+        assert "documento já cadastrado" in r2.json()["detail"]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_dedup_remove_arquivo_ao_retornar_409(tmp_path, monkeypatch):
+    # Se register falha com dedup, o arquivo gravado em disco deve ser removido
+    from app.data.registry import DocumentRegistry
+    from app.rag.index import VectorIndex
+
+    try:
+        factory = create_engine("sqlite+pysqlite:///:memory:",
+                                connect_args={"check_same_thread": False},
+                                poolclass=StaticPool, future=True)
+        Base.metadata.create_all(factory)
+        session_factory = sessionmaker(bind=factory, expire_on_commit=False, future=True)
+
+        monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
+        get_settings.cache_clear()
+
+        registry = DocumentRegistry(session_factory)
+        app = create_app(skip_bootstrap=True)
+        state = AppState(pipeline=FakePipeline(), registry=registry,
+                         index=VectorIndex(FakeEmbedder()), df=None,
+                         session_factory=session_factory)
+        app.dependency_overrides[get_state] = lambda: state
+        client = TestClient(app)
+
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        # Primeiro upload
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r1.status_code == 200
+        files_after_first = list(tmp_path.iterdir())
+        assert len(files_after_first) == 1
+
+        # Segundo upload (dedup failure)
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r2.status_code == 409
+
+        # Arquivo não deve ter aumentado (o novo deve ter sido removido)
+        files_after_second = list(tmp_path.iterdir())
+        assert len(files_after_second) == 1
+    finally:
+        get_settings.cache_clear()

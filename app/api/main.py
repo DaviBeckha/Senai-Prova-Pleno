@@ -129,7 +129,12 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
             dest.unlink(missing_ok=True)
             raise
 
-        state.registry.register(family, title, str(dest))
+        try:
+            state.registry.register(family, title, str(dest))
+        except ValueError as exc:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(409, "documento já cadastrado para esta família com este título") from exc
+
         return {"chunks": n}
 
     return app

@@ -38,6 +38,15 @@ class DocumentRegistry:
 
     def register(self, family: str, title: str, source_path: str) -> None:
         with self._factory() as session:
+            existing = session.scalar(
+                select(Document).where(
+                    (Document.family == family) & (Document.title == title)
+                )
+            )
+            if existing:
+                raise ValueError(
+                    "já existe documento com este título para esta família"
+                )
             session.add(Document(family=family, title=title, source_path=source_path))
             session.commit()
 

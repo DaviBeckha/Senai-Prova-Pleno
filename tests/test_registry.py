@@ -23,3 +23,20 @@ def test_register_new_document_unlocks_family():
     reg.seed_defaults()
     reg.register("ventoinha", "Procedimento Ventoinha", "docs_novos/ventoinha.pdf")
     assert reg.has_document("ventoinha")
+
+
+def test_register_duplicate_family_and_title_raises_valueerror():
+    reg = _registry()
+    reg.register("ventoinha", "Proc X", "docs_novos/proc_x.pdf")
+    try:
+        reg.register("ventoinha", "Proc X", "docs_novos/proc_x_v2.pdf")
+        assert False, "esperava ValueError"
+    except ValueError as exc:
+        assert "já existe documento com este título para esta família" in str(exc)
+
+
+def test_register_same_family_different_title_is_allowed():
+    reg = _registry()
+    reg.register("ventoinha", "Proc X", "docs_novos/proc_x.pdf")
+    reg.register("ventoinha", "Proc Y", "docs_novos/proc_y.pdf")
+    assert reg.has_document("ventoinha")
