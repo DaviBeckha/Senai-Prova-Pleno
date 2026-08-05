@@ -328,15 +328,19 @@ curl http://localhost:8000/health
 # http://localhost:8501
 ```
 
-**Sem GPU NVIDIA disponível no Docker Desktop**: o serviço `ollama` do compose reserva uma
-GPU (bloco `deploy:`) e falha ao subir sem `nvidia-container-toolkit` configurado. Duas
-saídas, documentadas como comentário no próprio `docker-compose.yml`:
+**CPU é o padrão do compose — GPU é opt-in.** `docker-compose.yml` sozinho não reserva GPU
+nenhuma: o serviço `ollama` sobe em CPU, sem depender de driver ou toolkit de GPU (mais
+lento, porém funcional e universal — é o comando do passo 2 acima). Duas formas de acelerar,
+quando há GPU NVIDIA disponível:
 
-1. Remover o bloco `deploy:` do serviço `ollama` — roda em CPU dentro do container, mais
-   lento, porém funcional.
-2. Usar o Ollama nativo do Windows (fora do Docker) e apontar
-   `OLLAMA_BASE_URL=http://host.docker.internal:11434` no serviço `api`, sem subir o
-   serviço `ollama` do compose (`docker compose up --build api dashboard postgres`).
+1. **GPU via override explícito**: `docker compose -f docker-compose.yml -f
+   docker-compose.gpu.yml up --build`. O `docker-compose.gpu.yml` só acrescenta o bloco
+   `deploy:` de reserva de GPU ao serviço `ollama` — requer `nvidia-container-toolkit`
+   configurado no Docker Desktop/daemon; sem `-f docker-compose.gpu.yml`, esse bloco nunca
+   entra no stack.
+2. **Ollama nativo do Windows** (fora do Docker): instalar o Ollama direto no host e apontar
+   `OLLAMA_BASE_URL=http://host.docker.internal:11434` no serviço `api`, sem subir o serviço
+   `ollama` do compose (`docker compose up --build api dashboard postgres`).
 
 ### 6.2 Execução local (sem Docker)
 
@@ -495,19 +499,25 @@ nenhuma fonte a citar.
 
 ### `POST /eventos` — caso 3: estado de operação (`normal`)
 
+Payload real (linha `id=1782` de `banner.xlsx` — mesmo arquivo usado no roteiro de
+demonstração, ver `demo/evento_normal.json` e a tabela de proveniência em
+`demo/README.md`). Os valores vêm sem qualquer reescala: a mesma sujeira de tipo do dataset
+real (inteiro em vez de decimal em vários campos) descrita na seção 4(b) — por isso `564.0`
+em vez de `0.564`.
+
 ```json
 {
-  "z_rms_velocity_in_s": 0.564, "z_rms_velocity_mm_s": 1.433,
+  "z_rms_velocity_in_s": 564.0, "z_rms_velocity_mm_s": 1433.0,
   "temperature_f": 73.4, "temperature_c": 23.0,
-  "x_rms_velocity_in_s": 0.702, "x_rms_velocity_mm_s": 1.784,
-  "z_peak_acceleration_g": 0.362, "x_peak_acceleration_g": 0.346,
+  "x_rms_velocity_in_s": 702.0, "x_rms_velocity_mm_s": 1784.0,
+  "z_peak_acceleration_g": 362.0, "x_peak_acceleration_g": 346.0,
   "z_peak_vel_comp_freq_hz": 61.0, "x_peak_vel_comp_freq_hz": 61.0,
-  "z_rms_acceleration_g": 0.058, "x_rms_acceleration_g": 0.084,
-  "z_kurtosis": 5.323, "x_kurtosis": 4.758,
-  "z_crest_factor": 4.855, "x_crest_factor": 4.28,
-  "z_peak_velocity_in_s": 0.798, "z_peak_velocity_mm_s": 2.027,
-  "x_peak_velocity_in_s": 0.993, "x_peak_velocity_mm_s": 2.524,
-  "z_high_freq_rms_accel_g": 0.074, "x_high_freq_rms_accel_g": 0.081,
+  "z_rms_acceleration_g": 58.0, "x_rms_acceleration_g": 84.0,
+  "z_kurtosis": 5323.0, "x_kurtosis": 4758.0,
+  "z_crest_factor": 4855.0, "x_crest_factor": 4.28,
+  "z_peak_velocity_in_s": 798.0, "z_peak_velocity_mm_s": 2027.0,
+  "x_peak_velocity_in_s": 993.0, "x_peak_velocity_mm_s": 2524.0,
+  "z_high_freq_rms_accel_g": 74.0, "x_high_freq_rms_accel_g": 81.0,
   "rpm": 500.0,
   "modo": "offline"
 }
@@ -523,7 +533,7 @@ nenhuma fonte a citar.
   "sources": [],
   "renderer": null,
   "degraded": false,
-  "family_votes": {"normal": 44, "desbalanceado": 3, "motor_desligado": 2, "baseline": 1}
+  "family_votes": {"normal": 28, "motor_desligado": 16, "rolamento_combination": 2, "baseline": 2, "rolamento_ball": 1, "cocked_rotor": 1}
 }
 ```
 
