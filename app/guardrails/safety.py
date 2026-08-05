@@ -33,7 +33,7 @@ class SafetyDecision:
 
 
 _INTERVENTION = re.compile(
-    r"\b(?:ajustar|apertar|remover|instalar|substituir|abrir|desmontar|corrigir)\b"
+    r"\b(?:ajustar|apertar|remover|instalar|substituir|abrir|desmontar|corrigir|trocar)\b"
 )
 _RUNNING = re.compile(
     r"\b(?:maquina ligada|equipamento ligado|motor ligado|sem parar|operando|em funcionamento)\b"

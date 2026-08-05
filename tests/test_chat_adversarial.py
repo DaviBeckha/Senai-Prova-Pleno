@@ -8,6 +8,7 @@ TemplateRenderer (extrativo, deterministico) como primario e fallback.
 """
 
 import pandas as pd
+import pytest
 
 from app.chat.analyzer import analyze_question
 from app.data.loader import FEATURE_COLUMNS
@@ -197,17 +198,26 @@ def test_pergunta_de_historico_retorna_numeros_do_occurrence_stats():
 # Seguranca: intervencao com a maquina em funcionamento
 # ---------------------------------------------------------------------------
 
-def test_intervencao_com_motor_ligado_e_recusada_antes_de_qualquer_evidencia():
-    # "trocar a correia" e uma intervencao fisica no equipamento tao valida
-    # quanto "substituir" ou "remover" (ja cobertas pela regra de intervencao
-    # em app/guardrails/safety.py), e a pergunta cita explicitamente o motor
-    # em funcionamento ("motor ligado" casa o marcador de equipamento
-    # operando). O modulo de seguranca existe para recusar esse cenario antes
-    # de qualquer busca ou geracao — nunca responder com base em texto livre
-    # nem liberar a execucao sem evidencia de parada/bloqueio.
+@pytest.mark.parametrize(
+    "pergunta",
+    [
+        "posso trocar a correia com o motor ligado?",
+        "posso substituir a correia com o motor ligado?",
+        "posso remover a correia com o motor ligado?",
+        "posso desmontar a correia com o motor ligado?",
+    ],
+)
+def test_intervencao_com_motor_ligado_e_recusada_antes_de_qualquer_evidencia(pergunta):
+    # "trocar", "substituir", "remover" e "desmontar" sao verbos de
+    # intervencao fisica equivalentes no dominio (todos descrevem tirar a
+    # correia do lugar), e a pergunta cita explicitamente o motor em
+    # funcionamento ("motor ligado" casa o marcador de equipamento operando).
+    # O modulo de seguranca (app/guardrails/safety.py) recusa esse cenario
+    # antes de qualquer busca ou geracao — nunca responder com base em texto
+    # livre nem liberar a execucao sem evidencia de parada/bloqueio.
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
-    rep = pipeline.answer_question("posso trocar a correia com o motor ligado?")
+    rep = pipeline.answer_question(pergunta)
 
     assert rep.status == "refused_unsafe"
     assert rep.message == (
@@ -215,3 +225,20 @@ def test_intervencao_com_motor_ligado_e_recusada_antes_de_qualquer_evidencia():
         "funcionamento. Interrompa a atividade e siga o procedimento "
         "de segurança e autorização vigente da empresa."
     )
+
+
+def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
+    # Caso de controle: a MESMA pergunta de intervencao ("trocar"), sem
+    # nenhuma mencao a equipamento em funcionamento, nao deve ser recusada —
+    # prova que incluir "trocar" na regra de intervencao nao a tornou
+    # agressiva a ponto de bloquear perguntas de manutencao comuns feitas com
+    # a maquina parada (mesmo comportamento ja observado para os verbos
+    # "ajustar" e "substituir", que ja estavam na regra antes deste caso).
+    pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
+
+    rep = pipeline.answer_question("posso trocar a correia?")
+
+    assert rep.status == "answered"
+    assert rep.families == ("correia",)
+    assert rep.sources == ("Doc4.pdf",)
+    assert "ajustar a tensao da correia" in rep.message
