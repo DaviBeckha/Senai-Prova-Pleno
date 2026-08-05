@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
@@ -5,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.main import create_app, get_state
 from app.api.state import AppState
+from app.core.config import get_settings
 from app.data.loader import FEATURE_COLUMNS
 from app.data.models import Base, Diagnosis, Event
 from app.pipeline import DiagnosisReport
@@ -185,3 +189,102 @@ def test_documentos_extensao_nao_suportada():
     )
     assert r.status_code == 422
     assert "extensão não suportada" in r.json()["detail"]
+
+
+class FakeEmbedder:
+    """Embedder deterministico (sem dependencia de modelo real) para exercitar
+    VectorIndex.add durante a ingestao no fluxo de upload."""
+
+    def embed(self, texts, type_):
+        return [[float(len(t)), 1.0] for t in texts]
+
+
+class FakeRegistry:
+    """Registry em memoria que apenas grava as chamadas de register(), para
+    inspecionar o caminho persistido sem tocar em banco/sqlite."""
+
+    def __init__(self):
+        self.registered = []
+
+    def register(self, family, title, source_path):
+        self.registered.append((family, title, source_path))
+
+
+def _client_com_uploads(tmp_path, monkeypatch):
+    """Client com uploads_dir apontando para tmp_path (via env var + cache_clear
+    do get_settings), registry/index fake para inspecionar o resultado do
+    upload sem sujar o repositorio nem depender de embeddings reais."""
+    from app.rag.index import VectorIndex
+
+    monkeypatch.setenv("UPLOADS_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    registry = FakeRegistry()
+    app = create_app(skip_bootstrap=True)
+    state = AppState(pipeline=FakePipeline(), registry=registry,
+                     index=VectorIndex(FakeEmbedder()), df=None)
+    app.dependency_overrides[get_state] = lambda: state
+    return TestClient(app), registry
+
+
+def test_documentos_salva_arquivo_persistente(tmp_path, monkeypatch):
+    # Uploads precisam sobreviver a restart: o arquivo tem que existir de
+    # fato em uploads_dir/ (nao um tempfile apagado) e o registry deve guardar
+    # o caminho REAL em disco, nao o filename original enviado pelo cliente.
+    try:
+        client, registry = _client_com_uploads(tmp_path, monkeypatch)
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+        r = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Teste"},
+        )
+        assert r.status_code == 200
+
+        assert len(registry.registered) == 1
+        family, title, source_path = registry.registered[0]
+        assert family == "correia"
+        assert title == "Doc Teste"
+
+        saved = Path(source_path)
+        assert saved.exists()
+        assert saved.parent == tmp_path
+        assert saved.name != "Doc Teste.md"
+        assert saved.read_bytes() == content
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_arquivo_excede_10mb():
+    client, _ = _client_com_pipeline()
+    conteudo_grande = b"a" * (10 * 1024 * 1024 + 1)
+    r = client.post(
+        "/documentos",
+        files={"file": ("grande.md", conteudo_grande, "text/markdown")},
+        data={"family": "correia", "title": "Doc Grande"},
+    )
+    assert r.status_code == 422
+    assert "10 MB" in r.json()["detail"]
+
+
+def test_documentos_ingestao_falha_remove_arquivo_orfao(tmp_path, monkeypatch):
+    # Se a ingestao falhar depois do arquivo ja gravado em disco, nao pode
+    # sobrar lixo orfao em uploads_dir/ — e o erro original ainda precisa
+    # propagar (comportamento existente preservado).
+    import app.rag.ingest as ingest_module
+
+    def _falha(*args, **kwargs):
+        raise RuntimeError("falha simulada na ingestao")
+
+    monkeypatch.setattr(ingest_module, "ingest_pdf", _falha)
+    try:
+        client, _ = _client_com_uploads(tmp_path, monkeypatch)
+        with pytest.raises(RuntimeError):
+            client.post(
+                "/documentos",
+                files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
+                data={"family": "correia", "title": "Doc X"},
+            )
+        assert list(tmp_path.iterdir()) == []
+    finally:
+        get_settings.cache_clear()

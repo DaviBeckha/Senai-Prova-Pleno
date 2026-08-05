@@ -1,5 +1,9 @@
 import logging
+import re
+import unicodedata
+import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
 
@@ -9,6 +13,18 @@ from app.core.config import get_settings
 from app.data.loader import FEATURE_COLUMNS
 
 logger = logging.getLogger(__name__)
+
+_ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt"}
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+_SAFE = re.compile(r"[^a-z0-9._-]+")
+
+
+def _safe_filename(family: str, original: str) -> str:
+    stem = Path(original or "doc").stem
+    stem = unicodedata.normalize("NFKD", stem.casefold())
+    stem = _SAFE.sub("-", stem)[:60].strip("-") or "doc"
+    suffix = Path(original or "").suffix.lower() or ".pdf"
+    return f"{family}--{stem}--{uuid.uuid4().hex[:8]}{suffix}"
 
 
 def get_state(request: Request) -> AppState:
@@ -75,22 +91,31 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
     async def documentos(file: UploadFile, family: str = Form(...),
                          title: str = Form(...),
                          state: AppState = Depends(get_state)) -> dict:
-        import os, pathlib, tempfile
         from app.rag.ingest import ingest_pdf
-        suffix = pathlib.Path(file.filename or "doc.pdf").suffix or ".pdf"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(await file.read())
-            path = tmp.name
+
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in _ALLOWED_EXTENSIONS:
+            raise HTTPException(422, "extensão não suportada (use .pdf, .md ou .txt)")
+
+        content = await file.read()
+        if len(content) > _MAX_UPLOAD_BYTES:
+            raise HTTPException(422, "arquivo excede 10 MB")
+
+        uploads_dir = Path(get_settings().uploads_dir)
+        uploads_dir.mkdir(parents=True, exist_ok=True)
+        dest = uploads_dir / _safe_filename(family, file.filename or "")
+        dest.write_bytes(content)
+
         try:
-            n = ingest_pdf(path, family, state.index)
+            n = ingest_pdf(str(dest), family, state.index)
         except ValueError as exc:
+            dest.unlink(missing_ok=True)
             raise HTTPException(422, "extensão não suportada (use .pdf, .md ou .txt)") from exc
-        finally:
-            try:
-                os.unlink(path)
-            except OSError:
-                pass
-        state.registry.register(family, title, file.filename or path)
+        except Exception:
+            dest.unlink(missing_ok=True)
+            raise
+
+        state.registry.register(family, title, str(dest))
         return {"chunks": n}
 
     return app

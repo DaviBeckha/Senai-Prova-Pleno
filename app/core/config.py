@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 768
     data_file: str = "banner.xlsx"
     faiss_dir: str = "data_local/faiss"
+    uploads_dir: str = "data_uploads"
 
     # Corte de similaridade da evidencia. Os embeddings sao normalizados
     # (EmbeddingService.embed), entao o produto interno e o cosseno.
