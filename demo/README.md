@@ -107,6 +107,17 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8000/documentos -Form @{
 }
 ```
 
+`-Form` exige PowerShell 6.1+ (não funciona no Windows PowerShell 5.1 padrão) — alternativa com
+o `curl.exe` nativo do Windows (o binário em `System32`, não o alias do PowerShell para
+`Invoke-WebRequest`):
+
+```powershell
+curl.exe -X POST http://localhost:8000/documentos `
+  -F "file=@demo/procedimento_ventoinha_demo.md" `
+  -F "family=ventoinha" `
+  -F "title=Procedimento Ventoinha Demo"
+```
+
 Resultado esperado: `{"chunks": 3}` — o documento tem três seções (sintomas, diagnóstico,
 correção).
 

@@ -113,6 +113,17 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8000/documentos -Form @{
 }
 ```
 
+`-Form` exige PowerShell 6.1+ (não funciona no Windows PowerShell 5.1 do `powershell.exe`
+padrão) — alternativa com o `curl.exe` nativo do Windows (não o alias do PowerShell para
+`Invoke-WebRequest`, o binário real em `System32`):
+
+```powershell
+curl.exe -X POST http://localhost:8000/documentos `
+  -F "file=@demo/procedimento_ventoinha_demo.md" `
+  -F "family=ventoinha" `
+  -F "title=Procedimento Ventoinha Demo"
+```
+
 Repetir a consulta de `demo/evento_ventoinha.json`: a resposta muda imediatamente de
 `sem_documento` para `diagnostico` — sem reiniciar a API, sem novo deploy. Isso demonstra
 RF5 (registro de novos documentos com efeito imediato) e reforça que o guardrail é dinâmico:
@@ -157,14 +168,23 @@ a interpretação acontece **antes** do RAG e do LLM, em código determinístico
 ~~~text
 1. "O rolamento interno está aquecendo" deve reconhecer rolamento_inner.
 2. "Não é correia, é a polia" deve consultar somente polia.
-3. "A ventoinha está raspando" deve responder que ventoinha é reconhecida, mas não documentada.
+3. "O rotor está excêntrico" deve responder que eccentric_rotor é reconhecida, mas não
+   documentada.
 ~~~
 
 O caso 1 mostra que o vocabulário do operador ("rolamento interno", "pista interna", "inner
 bearing") mapeia para a família técnica sem que ele precise saber o identificador interno. O
 caso 2 mostra que a negação é respeitada — `correia` não chega a ser consultada no índice. O
-caso 3 é a mesma contenção do passo 4, agora pelo caminho do chat: família **reconhecida**,
-documento **ausente**, LLM **não chamado**.
+caso 3 é a mesma classe de contenção do passo 4, agora pelo caminho do chat: família
+**reconhecida**, documento **ausente**, LLM **não chamado**.
+
+**Nota de dependência de ordem.** O caso 3 usa deliberadamente `eccentric_rotor`, não
+`ventoinha` (a família do passo 4): `eccentric_rotor` nunca ganha documento em nenhum ponto
+deste roteiro — é a decisão permanente registrada na seção 5 do `README.md` ("Doc5.pdf" cobre
+excentricidade de polia, não rotor excêntrico) —, então este passo funciona em qualquer ordem,
+inclusive depois do passo 5. Repetir o exemplo com `ventoinha` aqui quebraria o roteiro se
+executado depois do passo 5 (o documento já estaria cadastrado e a resposta viria
+`diagnostico`, não a contenção que este passo quer demonstrar).
 
 Vale contrastar com o passo 4: lá o gatilho é um evento de sensor e a família vem do voto kNN;
 aqui o gatilho é texto livre e a família vem do catálogo de sinônimos. São duas portas de
@@ -235,6 +255,8 @@ liberação para executar com a máquina em funcionamento.
 | `postgres` não fica `healthy` / API não inicializa | `docker compose logs postgres` (erro de inicialização, porta 5432 já em uso no host, volume corrompido) — reiniciar com `docker compose down` seguido de `docker compose up --build`; se a porta estiver ocupada, trocar o bind em um override local (nunca no `docker-compose.yml` versionado) | Ver seção 6.4 do `README.md` (portas publicadas só em `127.0.0.1`) |
 | `ollama` fica `unhealthy` por mais de alguns minutos | Conferir se o `ollama pull qwen2.5:7b-instruct` do passo 1 realmente rodou (`docker compose ps`, depois `docker exec -it <container> ollama list`) — sem o modelo baixado o healthcheck nunca passa, mas a API continua respondendo com o template (mesmo caso do primeiro sintoma) | Passo 1 deste roteiro |
 | Dashboard trava/demora em uma chamada | `DASHBOARD_TIMEOUT=330` (compose) dá margem para uma geração lenta em CPU; se estourar mesmo assim, repetir a chamada em modo offline com um payload de `demo/` em vez do sorteio aleatório, para eliminar variância de linha | `demo/README.md` |
+| Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (os volumes `pgdata` e `uploads` sobrevivem a um `docker compose down` sem `-v`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 (cadastro do documento) tomaria `409` (família já documentada) | **Reset seletivo pré-entrevista**: `docker compose down` seguido de `docker volume rm <projeto>_pgdata <projeto>_uploads` — conferir os nomes reais com `docker volume ls` (o prefixo é o nome do projeto Compose, por padrão o nome do diretório, ex. `senai-prova-pleno_pgdata`); **não** remover o volume `ollama` (evita repuxar alguns GB do modelo). Subir de novo com `docker compose up --build` e aceitar o reseed do `banner.xlsx` (~2 min) | Passo 5 deste roteiro |
+| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.git/info/exclude`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | Ver a linha "`postgres` não fica `healthy`" desta mesma tabela — o mesmo tipo de override que remapeia a porta do Postgres pode remapear a da API |
 
 ## Ensaio real (pendente — Docker indisponível nesta estação)
 
@@ -292,7 +314,7 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 
 | Critério | Onde é atendido |
 |---|---|
-| Clareza na comunicação / organização da apresentação | Este roteiro de demonstração (passos 1-7) |
+| Clareza na comunicação / organização da apresentação | Este roteiro de demonstração (passos 1-10) |
 | Justificativa das decisões técnicas adotadas | README, seção 3 ("Decisões técnicas e justificativas") — tabela com escolha e justificativa lado a lado para cada camada |
 | Capacidade de argumentação / domínio dos conceitos utilizados | README, seção 4 (desafios reais dos dados) e seção 5 (guardrail anti-alucinação, incluindo a decisão documentada sobre `eccentric_rotor`) |
 | Justificativa dos resultados obtidos / interpretação dos resultados | README, seção 4(d) — achado de que o voto kNN concorda com a família real em ~46% dos casos, e a decisão de expor `family_votes` em vez de esconder a incerteza |
