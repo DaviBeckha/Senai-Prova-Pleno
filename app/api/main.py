@@ -126,12 +126,27 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
 
         try:
             n = ingest_pdf(str(dest), family, state.index)
+        except UnicodeDecodeError as exc:
+            # UnicodeDecodeError herda de ValueError — precisa ser capturado
+            # ANTES do except ValueError abaixo, senao um .md/.txt fora de
+            # UTF-8 recebe a mensagem (falsa) de extensão não suportada.
+            dest.unlink(missing_ok=True)
+            raise HTTPException(422, "arquivo não está em UTF-8") from exc
         except ValueError as exc:
             dest.unlink(missing_ok=True)
             raise HTTPException(422, "extensão não suportada (use .pdf, .md ou .txt)") from exc
         except Exception:
             dest.unlink(missing_ok=True)
             raise
+
+        if n == 0:
+            # Sem chunks utilizaveis (arquivo vazio, so whitespace, ou PDF
+            # escaneado sem texto extraivel): registrar a familia aqui
+            # deixaria ela marcada como "documentada" com contencao vazia no
+            # indice — todo diagnostico cairia em "sem trechos" e a
+            # retentativa com o mesmo titulo tomaria 409.
+            dest.unlink(missing_ok=True)
+            raise HTTPException(422, "documento sem conteúdo utilizável")
 
         try:
             state.registry.register(family, title, str(dest))

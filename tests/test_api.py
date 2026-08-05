@@ -532,3 +532,65 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
         assert r2.status_code == 409
     finally:
         get_settings.cache_clear()
+
+
+def test_documentos_arquivo_vazio_retorna_422_e_nao_registra(tmp_path, monkeypatch):
+    # Antes desta correcao: .md vazio ingeria 0 chunks e AINDA ASSIM
+    # registrava a familia como "documentada" (200 {"chunks": 0}) — todo
+    # diagnostico subsequente da familia caia em contencao "sem trechos" e a
+    # retentativa com o mesmo titulo tomava 409 em vez de poder corrigir o
+    # upload. Documento sem conteudo utilizavel tem que ser rejeitado (422),
+    # sem registrar nada, sem arquivo orfao e sem chunks no indice.
+    try:
+        client, registry, index = _client_com_registry_e_index(tmp_path, monkeypatch)
+        r = client.post(
+            "/documentos",
+            files={"file": ("vazio.md", b"", "text/markdown")},
+            data={"family": "correia", "title": "Doc Vazio"},
+        )
+        assert r.status_code == 422
+        assert "sem conteúdo utilizável" in r.json()["detail"]
+        assert list(tmp_path.iterdir()) == []
+        assert registry.has_document("correia", "Doc Vazio") is False
+        assert index.chunks_for_family("correia") == ()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_arquivo_so_whitespace_retorna_422_e_nao_registra(tmp_path, monkeypatch):
+    # Mesmo cenario do PDF escaneado (sem camada de texto extraivel): o
+    # fallback de chunk_text produzia 1 chunk de puro whitespace, que tambem
+    # "documentava" a familia com evidencia-lixo. Precisa do mesmo 422.
+    try:
+        client, registry, index = _client_com_registry_e_index(tmp_path, monkeypatch)
+        r = client.post(
+            "/documentos",
+            files={"file": ("so_espacos.txt", b"\n\n   \n\t\n", "text/plain")},
+            data={"family": "correia", "title": "Doc So Espacos"},
+        )
+        assert r.status_code == 422
+        assert "sem conteúdo utilizável" in r.json()["detail"]
+        assert list(tmp_path.iterdir()) == []
+        assert registry.has_document("correia", "Doc So Espacos") is False
+        assert index.chunks_for_family("correia") == ()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_encoding_invalido_retorna_422_mensagem_propria(tmp_path, monkeypatch):
+    # UnicodeDecodeError herda de ValueError: antes desta correcao, um .md em
+    # Latin-1 (bytes invalidos em utf-8) caia no except ValueError generico e
+    # respondia com a mensagem falsa de "extensao nao suportada". Precisa de
+    # mensagem propria que descreva o problema real.
+    try:
+        client, _, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
+        r = client.post(
+            "/documentos",
+            files={"file": ("latin1.md", b"\xe9\xe1", "text/markdown")},
+            data={"family": "correia", "title": "Doc Latin1"},
+        )
+        assert r.status_code == 422
+        assert "não está em UTF-8" in r.json()["detail"]
+        assert list(tmp_path.iterdir()) == []
+    finally:
+        get_settings.cache_clear()
