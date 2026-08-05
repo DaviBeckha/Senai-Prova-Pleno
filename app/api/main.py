@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 _ALLOWED_EXTENSIONS = {".pdf", ".md", ".txt"}
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 _SAFE = re.compile(r"[^a-z0-9._-]+")
+# Allowlist estrita para o campo family: apenas letras minusculas, digitos e
+# "_" (formato das familias reais do dominio — ver app/data/labels.py).
+# Bloqueia qualquer caractere usado em travessia de diretorio ("/", "\\",
+# "."), inclusive apos normalizacao (strip + casefold) do valor recebido.
+_FAMILY_RE = re.compile(r"^[a-z0-9_]{1,40}$")
 
 
 def _safe_filename(family: str, original: str) -> str:
@@ -93,6 +98,10 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
                          state: AppState = Depends(get_state)) -> dict:
         from app.rag.ingest import ingest_pdf
 
+        family = family.strip().casefold()
+        if not _FAMILY_RE.match(family):
+            raise HTTPException(422, "família inválida (use letras minúsculas, números e _)")
+
         suffix = Path(file.filename or "").suffix.lower()
         if suffix not in _ALLOWED_EXTENSIONS:
             raise HTTPException(422, "extensão não suportada (use .pdf, .md ou .txt)")
@@ -104,6 +113,11 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         uploads_dir = Path(get_settings().uploads_dir)
         uploads_dir.mkdir(parents=True, exist_ok=True)
         dest = uploads_dir / _safe_filename(family, file.filename or "")
+        # Defesa em profundidade: mesmo com family ja validada, garante que o
+        # destino final nao escapa de uploads_dir antes de gravar qualquer
+        # byte em disco. Falha vira 422 (nunca 500/gravacao fora do lugar).
+        if not dest.resolve().is_relative_to(uploads_dir.resolve()):
+            raise HTTPException(422, "caminho de destino inválido")
         dest.write_bytes(content)
 
         try:

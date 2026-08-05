@@ -288,3 +288,82 @@ def test_documentos_ingestao_falha_remove_arquivo_orfao(tmp_path, monkeypatch):
         assert list(tmp_path.iterdir()) == []
     finally:
         get_settings.cache_clear()
+
+
+def test_documentos_family_com_path_traversal_e_rejeitada(tmp_path, monkeypatch):
+    # PoC reportado na revisao: family="../../../evil_escape_poc" escapava
+    # do uploads_dir e gravava fora do diretorio esperado. uploads_dir aqui
+    # e um subdiretorio nao-criado de tmp_path (tmp_path e exclusivo deste
+    # teste) para conseguirmos provar que NADA foi escrito em lugar nenhum
+    # da arvore, nem dentro nem fora do uploads_dir.
+    uploads_dir = tmp_path / "uploads_dir"
+    try:
+        client, registry = _client_com_uploads(uploads_dir, monkeypatch)
+        r = client.post(
+            "/documentos",
+            files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
+            data={"family": "../../../evil_escape_poc", "title": "Doc Malicioso"},
+        )
+        assert r.status_code == 422
+        assert "família inválida" in r.json()["detail"]
+        assert registry.registered == []
+        assert list(tmp_path.rglob("*")) == []
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_family_snake_case_valida_continua_aceita(tmp_path, monkeypatch):
+    # Familias legitimas do dominio sao snake_case com underscore (ex.:
+    # rolamento_outer, motor_desligado) — a validacao anti-traversal nao
+    # pode rejeitar esse formato.
+    try:
+        client, registry = _client_com_uploads(tmp_path, monkeypatch)
+        content = b"1. Objetivo\nInspecionar pista externa do rolamento.\n"
+        r = client.post(
+            "/documentos",
+            files={"file": ("Doc Rolamento.md", content, "text/markdown")},
+            data={"family": "rolamento_outer", "title": "Doc Rolamento"},
+        )
+        assert r.status_code == 200
+        assert registry.registered[0][0] == "rolamento_outer"
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_defesa_em_profundidade_bloqueia_escape_do_uploads_dir(tmp_path, monkeypatch):
+    # Camada extra, independente da validacao de family: mesmo que
+    # _safe_filename um dia devolva um nome com travessia de diretorio, o
+    # endpoint tem que barrar ANTES de gravar (422), nunca deixar escapar do
+    # uploads_dir nem estourar em 500.
+    import app.api.main as main_module
+
+    monkeypatch.setattr(main_module, "_safe_filename",
+                        lambda family, original: "../evil_escape.md")
+    uploads_dir = tmp_path / "uploads_dir"
+    try:
+        client, registry = _client_com_uploads(uploads_dir, monkeypatch)
+        r = client.post(
+            "/documentos",
+            files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
+            data={"family": "correia", "title": "Doc X"},
+        )
+        assert r.status_code == 422
+        assert registry.registered == []
+        assert not (tmp_path / "evil_escape.md").exists()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_filename_sem_extensao_retorna_422():
+    # Fixado propositalmente: o fluxo novo rejeita com 422 quando o filename
+    # nao tem extensao, em vez de assumir .pdf silenciosamente como o fluxo
+    # antigo fazia.
+    client, _ = _client_com_pipeline()
+    r = client.post(
+        "/documentos",
+        files={"file": ("documento_sem_extensao", b"conteudo qualquer",
+                        "application/octet-stream")},
+        data={"family": "correia", "title": "Doc Sem Extensao"},
+    )
+    assert r.status_code == 422
+    assert "extensão não suportada" in r.json()["detail"]
