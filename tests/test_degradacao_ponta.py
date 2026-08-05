@@ -9,11 +9,11 @@ a demo sobrevive de fato se o processo do Ollama morrer no meio da
 entrevista, nao so que a classe Router sabe degradar em isolamento.
 
 Contrato conferido em app/api/schemas.py antes de escrever este teste:
-DiagnosisOut JA expõe `degraded: bool` e `renderer: str | None` (EventOut e
-DiagnosisOut sao o mesmo modelo) — nao ha lacuna de contrato aqui. Lacuna
-diferente, fora do escopo deste teste: em ChatOut (mesmo arquivo) so existe
-`degraded`, sem `renderer`, mesmo o ChatReport interno ja carregando os dois
-campos.
+`DiagnosisOut` (response_model de `POST /eventos` em app/api/main.py) JA expõe
+`degraded: bool` e `renderer: str | None` — nao ha lacuna de contrato aqui.
+Lacuna diferente, fora do escopo deste teste: em ChatOut (mesmo arquivo) so
+existe `degraded`, sem `renderer`, mesmo o ChatReport interno ja carregando os
+dois campos.
 """
 
 import json
@@ -35,8 +35,13 @@ from app.similarity.engine import SimilarityEngine
 
 DEMO_DIR = Path(__file__).resolve().parent.parent / "demo"
 
-# Porta sem nenhum servico escutando: a conexao e recusada de imediato (sem
-# depender de timeout), o que mantem o teste rapido mesmo sem mockar httpx.
+# Porta sem nenhum servico escutando. O comportamento do SO varia (recusa
+# imediata ou espera ate o timeout configurado no OllamaRenderer) — nesta
+# maquina, observado na pratica como httpx.ConnectTimeout apos os 2s do
+# timeout curto abaixo, nao uma recusa instantanea. Os dois casos terminam
+# igual (excecao capturada pelo Router, degradacao para o template), entao o
+# teste cobre ambos sem mockar httpx; o timeout curto so existe para nao
+# esperar os 300s do default de producao caso a conexao fique presa.
 _PORTA_MORTA = "http://127.0.0.1:9/"
 
 

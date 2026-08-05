@@ -338,9 +338,12 @@ quando há GPU NVIDIA disponível:
    `deploy:` de reserva de GPU ao serviço `ollama` — requer `nvidia-container-toolkit`
    configurado no Docker Desktop/daemon; sem `-f docker-compose.gpu.yml`, esse bloco nunca
    entra no stack.
-2. **Ollama nativo do Windows** (fora do Docker): instalar o Ollama direto no host e apontar
-   `OLLAMA_BASE_URL=http://host.docker.internal:11434` no serviço `api`, sem subir o serviço
-   `ollama` do compose (`docker compose up --build api dashboard postgres`).
+2. **Ollama nativo do Windows** (fora do Docker): instalar o Ollama direto no host e definir
+   `OLLAMA_BASE_URL=http://host.docker.internal:11434` no `.env` do projeto (ou exportar na
+   shell antes de subir o compose) — o serviço `api` já lê essa variável do ambiente
+   (`OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}` em `docker-compose.yml`, mesmo
+   padrão das demais variáveis do bloco). Depois, subir sem o serviço `ollama` do compose
+   (`docker compose up --build api dashboard postgres`).
 
 ### 6.2 Execução local (sem Docker)
 
@@ -490,7 +493,7 @@ e `freq_per_day` são estatísticas reais computadas sobre o histórico para a f
   "sources": [],
   "renderer": null,
   "degraded": false,
-  "family_votes": {"ventoinha": 22, "rolamento_outer": 10, "polia": 7}
+  "family_votes": {"ventoinha": 13, "rolamento_combination": 10, "polia": 7, "cocked_rotor": 6, "rolamento_ball": 5, "rolamento_outer": 4, "normal": 2, "eccentric_rotor": 2, "rolamento_inner": 1}
 }
 ```
 
