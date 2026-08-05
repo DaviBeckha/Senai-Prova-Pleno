@@ -55,6 +55,7 @@ def load_from_db(session_factory) -> pd.DataFrame:
     testes devolve datetimes naive — no Postgres (timestamptz) a coercao e um
     no-op.
     """
+    # sem ORDER BY a ordem física do heap não é garantida e o desempate do kNN é sensível à ordem do corpus
     stmt = select(
         SensorReading.external_id.label("id"),
         SensorReading.created_at,
@@ -62,7 +63,7 @@ def load_from_db(session_factory) -> pd.DataFrame:
         SensorReading.family,
         SensorReading.kind,
         *[getattr(SensorReading, name) for name in FEATURE_COLUMNS],
-    )
+    ).order_by(SensorReading.id)
     with session_factory() as session:
         rows = [dict(row) for row in session.execute(stmt).mappings()]
     if not rows:
