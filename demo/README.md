@@ -16,8 +16,9 @@ padrão e o roteador de laudos) — cada um produz sempre o mesmo resultado, tra
 | `evento_normal.json` | `id=1782` | `normal` | `normal` (estado, não é falha) | `status: "estado"` |
 
 Os três payloads têm exatamente os 23 campos numéricos exigidos por `EventIn` — nenhum campo
-extra (nem comentário, nem metadado) foi incluído nos JSONs, para não colidir com a validação
-estrita da API. Os valores vêm sem qualquer "limpeza": alguns campos das linhas reais chegam
+extra (nem comentário, nem metadado) foi incluído nos JSONs, para manter cada payload idêntico
+ao schema documentado, sem misturar metadado de proveniência com dado de sensor (a proveniência
+de cada linha está na tabela acima). Os valores vêm sem qualquer "limpeza": alguns campos das linhas reais chegam
 com a mesma sujeira de tipo (inteiro em vez de decimal) documentada na seção "Desafios reais
 dos dados" do README principal — o pipeline lida com isso normalmente.
 
