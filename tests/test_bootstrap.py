@@ -3,9 +3,15 @@ import logging
 from app.core.config import Settings
 from app.data.db import make_session_factory
 from app.data.models import Base
-from app.data.registry import DocumentRegistry
+from app.data.registry import _SEED, DocumentRegistry
 from app.rag.index import VectorIndex
-from scripts.bootstrap import PDF_MAP, ingest_registry_documents, make_router, make_routers
+from scripts.bootstrap import (
+    PDF_MAP,
+    _bootstrap_seed_paths,
+    ingest_registry_documents,
+    make_router,
+    make_routers,
+)
 
 
 class FakeEmbedder:
@@ -29,10 +35,6 @@ def _registry() -> DocumentRegistry:
     return DocumentRegistry(factory)
 
 
-def _seed_paths() -> set[str]:
-    # Mesma formula usada em build_state — o "Doc1.pdf" extra cobre registros
-    # legados que ainda apontem para o PDF original (nao a transcricao .md).
-    return {path for path, _ in PDF_MAP} | {"Doc1.pdf"}
 
 
 def test_router_offline_usa_ollama():
@@ -99,7 +101,7 @@ def test_ingest_registry_documents_ingere_upload_registrado(tmp_path):
     reg.register("ventoinha", "Procedimento Ventoinha", str(doc_path))
 
     index = VectorIndex(FakeEmbedder())
-    ingested, missing = ingest_registry_documents(reg, index, _seed_paths())
+    ingested, missing = ingest_registry_documents(reg, index, _bootstrap_seed_paths())
 
     assert ingested == 1
     assert missing == []
@@ -113,7 +115,7 @@ def test_ingest_registry_documents_pula_documentos_do_seed():
     reg.seed_defaults()
 
     index = VectorIndex(FakeEmbedder())
-    ingested, missing = ingest_registry_documents(reg, index, _seed_paths())
+    ingested, missing = ingest_registry_documents(reg, index, _bootstrap_seed_paths())
 
     assert ingested == 0
     assert missing == []
@@ -127,8 +129,38 @@ def test_ingest_registry_documents_reporta_arquivo_ausente_sem_derrubar_bootstra
 
     index = VectorIndex(FakeEmbedder())
     with caplog.at_level(logging.WARNING):
-        ingested, missing = ingest_registry_documents(reg, index, _seed_paths())
+        ingested, missing = ingest_registry_documents(reg, index, _bootstrap_seed_paths())
 
     assert ingested == 0
     assert missing == [caminho_ausente]
     assert any(caminho_ausente in record.message for record in caplog.records)
+
+
+def test_ingest_registry_documents_tolera_falha_de_ingestao_sem_derrubar_bootstrap(tmp_path, caplog):
+    # Documento existe em disco (Path.exists() == True) mas o conteudo e
+    # invalido: PdfReader (chunk_pdf) levanta ao tentar ler o header. Antes
+    # desta correcao, essa excecao propagava de ingest_pdf e derrubava
+    # build_state inteiro — um unico upload corrompido tirava a API do ar
+    # a cada reinicio, ate intervencao manual no banco.
+    reg = _registry()
+    reg.seed_defaults()
+    doc_path = tmp_path / "corrompido.pdf"
+    doc_path.write_bytes(b"isto nao e um pdf valido, apenas bytes de lixo")
+    reg.register("quebrado", "Procedimento Quebrado", str(doc_path))
+
+    index = VectorIndex(FakeEmbedder())
+    with caplog.at_level(logging.WARNING):
+        ingested, not_ingested = ingest_registry_documents(reg, index, _bootstrap_seed_paths())
+
+    assert ingested == 0
+    assert not_ingested == [str(doc_path)]
+    assert any(str(doc_path) in record.message for record in caplog.records)
+
+
+def test_bootstrap_seed_paths_cobre_todos_os_paths_do_seed_do_registry():
+    # Trava contra divergencia futura: se _SEED (app/data/registry.py) ganhar
+    # uma familia nova com source_path que nao apareca no PDF_MAP, este teste
+    # falha ANTES que o proximo reinicio reindexe (e duplique no indice) um
+    # documento que ja deveria ser tratado como seed.
+    seed_source_paths = {source_path for _title, source_path in _SEED.values()}
+    assert seed_source_paths <= _bootstrap_seed_paths()
