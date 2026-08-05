@@ -33,10 +33,17 @@ class SafetyDecision:
 
 
 _INTERVENTION = re.compile(
-    r"\b(?:ajustar|apertar|remover|instalar|substituir|abrir|desmontar|corrigir|trocar)\b"
+    r"\b(?:ajust\w*|apert\w*|remov\w*|instal\w*|substitu\w*|"
+    # "abrir" usa radical estreito, nao abr\w*: a versao ampla casaria
+    # tambem substantivos sem relacao, como "abraçadeira" (normalizado
+    # "abracadeira"), que aparece no vocabulario de correias/polias.
+    # "trocar" tem o mesmo desvio ortografico de "corrigir": a forma
+    # imperativo/subjuntivo troca c por qu antes de e ("troque", "troquem").
+    r"abr(?:ir|a|am|indo|iu)\b|desmont\w*|corrij\w*|corrig\w*|troc\w*|troqu\w*)\b"
 )
 _RUNNING = re.compile(
-    r"\b(?:maquina ligada|equipamento ligado|motor ligado|sem parar|operando|em funcionamento)\b"
+    r"\b(?:maquina ligada|equipamento ligado|motor ligado|sem parar|operando|"
+    r"em funcionamento|funcionando|girando|rodando)\b"
 )
 _SAFETY_EVIDENCE = re.compile(
     r"\b(?:seguranca|desligar|bloqueio|etiquetagem|ausencia de energia|parada completa)\b"

@@ -273,3 +273,48 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
     assert "ajustar a tensao da correia" in rep.message
+
+
+# Formas conjugadas (imperativo/gerundio) dos verbos de intervencao: antes
+# desta correcao, _INTERVENTION so casava o infinitivo de cada verbo, entao
+# "troque a correia com o motor ligado?" nao era reconhecida como intervencao
+# e passava direto — mesma classe do bug ja corrigido para "trocar". Cobre
+# tambem "girando", marcador de maquina operando acrescentado a _RUNNING
+# junto com "funcionando" e "rodando".
+_FORMAS_CONJUGADAS_DE_INTERVENCAO = (
+    "troque a correia com o motor ligado?",
+    "ajuste a correia com a máquina ligada",
+    "posso trocar a correia com o motor girando?",
+    "instalando a peça com o equipamento ligado",
+)
+
+
+@pytest.mark.parametrize("pergunta", _FORMAS_CONJUGADAS_DE_INTERVENCAO)
+def test_intervencao_e_recusada_para_formas_conjugadas_dos_verbos(pergunta):
+    pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
+
+    rep = pipeline.answer_question(pergunta)
+
+    assert rep.status == "refused_unsafe"
+    assert rep.message == (
+        "Não execute ajuste ou intervenção com o equipamento em "
+        "funcionamento. Interrompa a atividade e siga o procedimento "
+        "de segurança e autorização vigente da empresa."
+    )
+
+
+def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida_normalmente():
+    # "abraçadeira" contem o radical "abr" (de "abrir"). Se _INTERVENTION
+    # usasse abr\w* (amplo, como os demais verbos), este substantivo seria
+    # casado indevidamente; por isso "abrir" usa uma alternativa mais estreita
+    # (abr(?:ir|a|am|indo|iu)\b). Sem marcador de maquina operando na
+    # pergunta, o resultado precisa ser uma resposta normal de qualquer jeito
+    # — mas o radical amplo tornaria essa pergunta um risco caso ela viesse
+    # acompanhada de um marcador de _RUNNING.
+    pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
+
+    rep = pipeline.answer_question("qual a função da abraçadeira da correia?")
+
+    assert rep.status == "answered"
+    assert rep.families == ("correia",)
+    assert rep.sources == ("Doc4.pdf",)
