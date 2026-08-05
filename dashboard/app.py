@@ -1,4 +1,13 @@
 import os
+import sys
+from pathlib import Path
+
+# `streamlit run dashboard/app.py` insere dashboard/ no INICIO do sys.path, e
+# entao `import app.*` resolveria para este proprio arquivo (dashboard/app.py)
+# em vez do pacote app/ na raiz — "'app' is not a package". Poe a raiz do
+# projeto na frente do path para desfazer o sombreamento. Precisa vir antes
+# dos imports de app/ e scripts/ abaixo.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
 import pandas as pd
