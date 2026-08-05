@@ -1,7 +1,7 @@
 from app.api.state import AppState
 from app.core.config import Settings
+from app.data.dataset_store import ensure_dataset
 from app.data.db import make_session_factory
-from app.data.loader import load_dataset
 from app.data.registry import DocumentRegistry
 from app.llm.ollama_adapter import OllamaRenderer
 from app.llm.openai_adapter import OpenAIRenderer
@@ -55,11 +55,11 @@ def make_router(settings: Settings) -> Router:
 
 
 def build_state(settings: Settings) -> AppState:
-    df = load_dataset(settings.data_file)
+    factory = make_session_factory(settings.database_url)
+    df = ensure_dataset(factory, settings.data_file)
     engine = SimilarityEngine()
     engine.fit(df)
 
-    factory = make_session_factory(settings.database_url)
     registry = DocumentRegistry(factory)
     registry.seed_defaults()
 
