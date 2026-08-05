@@ -60,7 +60,8 @@ def _tokens(value: str) -> set[str]:
 def evidence_items_for(ctx) -> tuple[EvidenceItem, ...]:
     """Evidencia identificada dos dois contextos.
 
-    ChatContext ja traz EvidenceItem do Plano 2. DiagnosisContext (/eventos)
+    ChatContext ja traz EvidenceItem montado pela camada de chat (app/rag/
+    retrieval.py). DiagnosisContext (/eventos)
     tem apenas chunks anonimos, entao os IDs sao derivados da ordem — o mesmo
     esquema `familia:E{n}` que build_user_prompt mostra ao modelo, para que a
     validacao seja identica nos dois caminhos.

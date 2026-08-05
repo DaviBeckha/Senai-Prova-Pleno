@@ -1,6 +1,5 @@
-# Controle de versao e artefatos de planejamento (nao entram na imagem).
+# Controle de versao (nao entra na imagem).
 .git
-.superpowers/
 
 # Testes e documentacao de projeto (nao sao runtime).
 tests/
@@ -8,8 +7,6 @@ docs/
 
 # Config/segredos e ambiente local (variaveis vem do compose/--env-file).
 .env
-CLAUDE.md
-AGENTS.md
 
 # Ambiente virtual e cache Python — reinstalado via requirements.txt.
 venv/
