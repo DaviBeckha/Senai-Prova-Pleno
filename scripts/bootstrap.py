@@ -1,3 +1,6 @@
+import logging
+from pathlib import Path
+
 from app.api.state import AppState
 from app.core.config import Settings
 from app.data.dataset_store import ensure_dataset
@@ -13,6 +16,8 @@ from app.rag.ingest import ingest_pdf
 from app.similarity.engine import SimilarityEngine
 from app.pipeline import PrescriptivePipeline
 
+logger = logging.getLogger(__name__)
+
 # Doc1.pdf e digitalizado sem camada de texto extraivel. No lugar, usamos a
 # transcricao versionada em docs_fontes/doc1_rolamentos.md, que chunk_file/
 # ingest_pdf ja suportam via despacho por extensao. Doc2-Doc6 permanecem
@@ -26,6 +31,36 @@ PDF_MAP = [
     ("Doc5.pdf", ["polia"]),
     ("Doc6.pdf", ["cocked_rotor"]),
 ]
+
+
+def ingest_registry_documents(
+    registry: DocumentRegistry, index: VectorIndex, seed_paths: set[str]
+) -> tuple[int, list[str]]:
+    """Reindexa documentos cadastrados (uploads) que nao vieram do PDF_MAP.
+
+    Cobre o reinicio do processo: uploads persistidos em disco (ver
+    Settings.uploads_dir) ficam registrados no banco, mas o indice vetorial
+    e volatil em memoria — sem esta reindexacao, um restart faz os uploads
+    sumirem da busca RAG mesmo com o registro intacto. Documentos do seed
+    (`seed_paths`, paths do PDF_MAP acima) sao pulados por ja terem sido
+    ingeridos no loop. Documento cujo arquivo nao existe mais em disco e
+    pulado com aviso em log — nunca derruba o bootstrap — e reportado no
+    retorno para quem chamou decidir o que fazer.
+    """
+    ingested = 0
+    missing: list[str] = []
+    for doc in registry.list_documents():
+        if doc.source_path in seed_paths:
+            continue
+        if not Path(doc.source_path).exists():
+            missing.append(doc.source_path)
+            logger.warning(
+                "documento cadastrado sem arquivo em disco, pulando: %s", doc.source_path
+            )
+            continue
+        ingest_pdf(doc.source_path, doc.family, index)
+        ingested += 1
+    return ingested, missing
 
 
 def make_routers(settings: Settings) -> dict[str, Router]:
@@ -75,6 +110,11 @@ def build_state(settings: Settings) -> AppState:
         for family in families:
             chunks = ingest_pdf(pdf, family, index)
             print(f"ingerido {pdf} → {family}: {chunks} chunks")
+
+    seed_paths = {path for path, _ in PDF_MAP} | {"Doc1.pdf"}
+    reindexed, _missing = ingest_registry_documents(registry, index, seed_paths)
+    if reindexed:
+        print(f"reindexados {reindexed} documento(s) cadastrado(s) apos reinicio")
 
     pipeline = PrescriptivePipeline(engine, df, registry, index,
                                     make_router(settings),
