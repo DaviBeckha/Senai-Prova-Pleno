@@ -18,6 +18,9 @@ from app.data.labels import normalize_label
 from scripts.simulator import build_payload
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
+# 330s = OLLAMA_TIMEOUT maximo (300s) + folga de rede, para o dashboard nunca
+# desistir antes da API/Ollama.
+REQUEST_TIMEOUT = float(os.environ.get("DASHBOARD_TIMEOUT", "330"))
 
 st.set_page_config(page_title="Manutencao Prescritiva SENAI", layout="wide")
 st.title("Manutenção Prescritiva — SENAI SC")
@@ -80,7 +83,7 @@ with aba_chat:
             payload["modo"] = modo
 
             try:
-                r = httpx.post(f"{API_URL}/eventos", json=payload, timeout=180).json()
+                r = httpx.post(f"{API_URL}/eventos", json=payload, timeout=REQUEST_TIMEOUT).json()
                 st.info(f"Status: {r['status']} | Família: {r['family']} | "
                         f"Ocorrências: {r['total_ocorrencias']} ({r['freq_per_day']}/dia)")
                 st.markdown(r["message"])
@@ -117,7 +120,7 @@ with aba_chat:
         try:
             resp = httpx.post(f"{API_URL}/chat",
                             json={"pergunta": pergunta, "modo": modo},
-                            timeout=180).json()
+                            timeout=REQUEST_TIMEOUT).json()
             with st.chat_message("assistant"):
                 st.write(resp["resposta"])
                 if resp["fontes"]:
