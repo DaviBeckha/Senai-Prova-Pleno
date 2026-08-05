@@ -35,8 +35,12 @@ services:
     # manual do primeiro uso e o sinal ESPERADO — nao ha depends_on condition:
     # service_healthy do servico `api` para este, de proposito: a API sobe
     # mesmo sem o modelo puxado e o Router degrada para o template.
+    # Exec form (sem shell): "ollama show" retorna exit != 0 quando o modelo
+    # nao esta presente, sem depender de grep existir na imagem. A
+    # interpolacao ${OLLAMA_MODEL:-...} mantem o healthcheck acompanhando o
+    # mesmo modelo configurado no servico `api`.
     healthcheck:
-      test: ["CMD-SHELL", "ollama list | grep -q 'qwen2.5:7b-instruct' || exit 1"]
+      test: ["CMD", "ollama", "show", "${OLLAMA_MODEL:-qwen2.5:7b-instruct}"]
       interval: 15s
       retries: 20
       start_period: 60s
