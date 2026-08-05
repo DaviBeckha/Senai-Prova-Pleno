@@ -32,6 +32,10 @@ _STOPWORDS = {
 # Fracao minima dos tokens significativos da acao que precisa aparecer na
 # citacao. Abaixo disso a acao esta parafraseando algo que a fonte nao diz.
 _MIN_LEXICAL_SUPPORT = 0.60
+# O suporte lexical mede OVERLAP de palavras, nao SENTIDO: uma acao que nega
+# a citacao ("Nao aplicar...") pode reaproveitar quase todas as palavras da
+# citacao e ainda assim inverter o que ela diz. Verificado a parte.
+_NEGATION_TOKENS = {"nao", "nunca", "jamais"}
 
 
 class GroundingValidationError(ValueError):
@@ -137,6 +141,10 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
                 f"passo {position}: ação possui suporte lexical de "
                 f"{support_ratio:.2f}, abaixo de {_MIN_LEXICAL_SUPPORT:.2f}"
             )
+        # Negacao presente em exatamente um dos dois lados inverte o sentido
+        # sem reduzir o suporte lexical o suficiente para ser barrada acima.
+        if bool(action_tokens & _NEGATION_TOKENS) != bool(quote_tokens & _NEGATION_TOKENS):
+            errors.append(f"passo {position}: negação sem suporte na citação")
     if not draft.steps and not draft.unanswered:
         errors.append("rascunho vazio")
     return tuple(errors)

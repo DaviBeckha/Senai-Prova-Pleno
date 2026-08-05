@@ -102,6 +102,45 @@ def test_abreviacao_e1_resolve_sem_ambiguidade():
     assert errors == ()
 
 
+def test_negacao_sem_suporte_quando_acao_nega_e_evidencia_afirma():
+    # Bypass real: a acao inverte o sentido da citacao ("Nao aplicar...")
+    # mas o suporte lexical (0,83) ainda passa, porque a citacao contem quase
+    # todas as palavras da acao — a unica que falta e justamente "nao".
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Não aplicar a tensao recomendada de 45 N",
+            quote="Aplicar a tensao recomendada de 45 N.")]), FakeCtx())
+    assert any("negação sem suporte" in e for e in errors)
+
+
+def test_negacao_sem_suporte_quando_evidencia_nega_e_acao_afirma():
+    # Sentido inverso: a citacao nega, a acao afirma. O suporte lexical NAO
+    # pega este caso — o denominador da razao e o numero de tokens da ACAO, e
+    # a acao (sem "nao") tem 100% de suporte na citacao (que so tem uma
+    # palavra a mais).
+    ctx = FakeCtx(chunks=[Chunk(
+        "correia", "Doc4.pdf", "9.1 Correia Frouxa",
+        "Não aplicar graxa em excesso na correia.")])
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Aplicar graxa em excesso na correia",
+            quote="Não aplicar graxa em excesso na correia.")]), ctx)
+    assert any("negação sem suporte" in e for e in errors)
+
+
+def test_negacao_presente_nos_dois_lados_continua_valida():
+    # Caso legitimo: acao e citacao concordam, as duas negando. Nao pode virar
+    # erro so por conter "nao" — a regra so reprova quando os lados divergem.
+    ctx = FakeCtx(chunks=[Chunk(
+        "correia", "Doc4.pdf", "9.1 Correia Frouxa",
+        "Não aplicar graxa em excesso na correia.")])
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Não aplicar graxa em excesso na correia",
+            quote="Não aplicar graxa em excesso na correia.")]), ctx)
+    assert errors == ()
+
+
 def test_abreviacao_ambigua_entre_familias_e_rejeitada():
     # Contexto de chat com DUAS familias, cada uma trazendo um item "E1" —
     # a familia declarada no passo ("correia", default de _step) nao bate com
