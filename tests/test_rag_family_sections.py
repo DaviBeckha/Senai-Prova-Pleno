@@ -28,6 +28,9 @@ dois bigramas ao mesmo tempo (11.) tem cosseno estritamente menor.
 
 from pathlib import Path
 
+import pytest
+
+from app.rag.family_sections import _BEARING_PREFIXES
 from app.rag.index import VectorIndex
 from app.rag.ingest import ingest_pdf
 
@@ -63,8 +66,11 @@ class FakeEmbedder:
 
 def _build_index() -> VectorIndex:
     idx = VectorIndex(FakeEmbedder())
-    ingest_pdf(_DOC1_PATH, "rolamento_inner", idx)
-    ingest_pdf(_DOC1_PATH, "rolamento_outer", idx)
+    # As 4 familias rolamento_* (nao so inner/outer), para que o isolamento
+    # estrutural entre TODAS elas — inclusive ball/combination, nunca
+    # exercitadas antes neste modulo — possa ser afirmado abaixo.
+    for family in _BEARING_PREFIXES:
+        ingest_pdf(_DOC1_PATH, family, idx)
     ingest_pdf(_DOC4_PATH, "correia", idx)
     return idx
 
@@ -95,19 +101,25 @@ def test_familia_correia_jamais_retorna_chunk_do_doc1_rolamentos():
     assert all(hit.chunk.doc_family == "correia" for hit in hits)
 
 
-def test_familia_rolamento_inner_nao_indexa_diagnostico_de_outros_subtipos():
-    # Isolamento estrutural (nao depende do embedder nem de scores): a secao
-    # 12 (pista externa), 14 (elementos rolantes) e 15 (gaiola) nao podem
-    # estar presentes nos chunks da familia rolamento_inner — ver
-    # app/rag/family_sections.py, _BEARING_PREFIXES["rolamento_inner"].
-    chunks = _INDEX.chunks_for_family("rolamento_inner")
+@pytest.mark.parametrize("family", sorted(_BEARING_PREFIXES))
+def test_familia_rolamento_nao_indexa_secoes_exclusivas_de_outras_familias(family):
+    # Isolamento estrutural completo (nao depende do embedder nem de scores):
+    # nenhuma secao exclusiva de OUTRA familia rolamento_* pode aparecer nos
+    # chunks desta — nao so o diagnostico 12/13/14/15 (ja coberto antes deste
+    # caso para inner/outer), tambem o subitem 4.x do modo de falha que
+    # family_sections.py filtra do mesmo jeito. rolamento_combination declara
+    # todos os prefixos como seus, entao para ela o conjunto de "prefixos de
+    # outras familias" e vazio — a asserção de exclusão vale trivialmente, e
+    # a de presenca abaixo confere que ela realmente trouxe as 4 secoes.
+    allowed = _BEARING_PREFIXES[family]
+    other_prefixes = tuple(
+        prefix
+        for other_family, prefixes in _BEARING_PREFIXES.items()
+        if other_family != family
+        for prefix in prefixes
+        if prefix not in allowed
+    )
+    chunks = _INDEX.chunks_for_family(family)
     secoes = [c.section for c in chunks]
-    assert not any(secao.startswith(("12.", "14.", "15.")) for secao in secoes), secoes
-    assert any(secao.startswith("13.") for secao in secoes), secoes
-
-
-def test_familia_rolamento_outer_nao_indexa_diagnostico_de_outros_subtipos():
-    chunks = _INDEX.chunks_for_family("rolamento_outer")
-    secoes = [c.section for c in chunks]
-    assert not any(secao.startswith(("13.", "14.", "15.")) for secao in secoes), secoes
-    assert any(secao.startswith("12.") for secao in secoes), secoes
+    assert not any(secao.startswith(other_prefixes) for secao in secoes), secoes
+    assert all(any(secao.startswith(prefix) for secao in secoes) for prefix in allowed), secoes

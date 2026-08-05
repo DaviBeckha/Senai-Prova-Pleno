@@ -96,6 +96,38 @@ def test_rascunho_so_com_unanswered_e_valido():
     assert errors == ()
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "_NUMBER so reconhece digitos (\\b\\d+...\\b); um valor divergente "
+        "escrito por extenso (\"noventa\" em vez de 45) nao e comparado "
+        "contra o numero da citacao e passa sem nenhum erro."
+    ),
+)
+def test_numero_por_extenso_diverge_da_citacao_sem_ser_detectado():
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Aplicar a tensao recomendada de noventa N",
+            quote="Aplicar a tensao recomendada de 45 N.")]), FakeCtx())
+    assert any("número sem suporte" in e for e in errors)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "unanswered nao passa por validacao de conteudo: um texto "
+        "procedural contrabandeado ali (torque, EPI, etapa) nao e conferido "
+        "contra nenhuma evidencia recuperada."
+    ),
+)
+def test_conteudo_procedural_em_unanswered_nao_e_sinalizado():
+    errors = validate_grounded_draft(
+        GroundedDraft(unanswered=[
+            "aplique 200 N de torque no parafuso mesmo sem evidência"
+        ]), FakeCtx())
+    assert errors != ()
+
+
 def test_abreviacao_e1_resolve_sem_ambiguidade():
     errors = validate_grounded_draft(
         GroundedDraft(steps=[_step(evidence_id="E1")]), FakeCtx())

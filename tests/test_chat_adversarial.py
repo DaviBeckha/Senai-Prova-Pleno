@@ -7,6 +7,8 @@ natural, sem nenhuma chamada de rede ou de modelo real: o router usa somente
 TemplateRenderer (extrativo, deterministico) como primario e fallback.
 """
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -63,12 +65,13 @@ def _df(families, kind="falha", n=20):
     return pd.DataFrame(rows)
 
 
-def _pipeline(df, documented, chunks_by_family):
+def _pipeline(df, documented, chunks_by_family, router=None):
     engine = SimilarityEngine()
     engine.fit(df)
     registry = FakeRegistry(documented)
     index = FakeIndex(chunks_by_family)
-    router = Router(primary=TemplateRenderer(), fallback=TemplateRenderer())
+    if router is None:
+        router = Router(primary=TemplateRenderer(), fallback=TemplateRenderer())
     return PrescriptivePipeline(engine, df, registry, index, router)
 
 
@@ -273,6 +276,11 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
     assert "ajustar a tensao da correia" in rep.message
+    # Segunda regra de safety.py (safety_evidence_limitation, usada em
+    # app/pipeline.py): os trechos do fake nao tem vocabulario de seguranca
+    # (desligar/bloqueio/etiquetagem/...), entao a resposta sai com a
+    # limitacao anexada — mesmo sem ser recusada.
+    assert any("não autoriza a execução" in l for l in rep.limitations)
 
 
 # Formas conjugadas (imperativo/gerundio) dos verbos de intervencao: antes
@@ -318,3 +326,46 @@ def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida
     assert rep.status == "answered"
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
+
+
+# ---------------------------------------------------------------------------
+# Elo validador -> chat: reprovacao de fundamentacao precisa degradar a
+# resposta final, nao so o RenderOutcome interno do Router (ja coberto por
+# tests/test_llm.py::test_router_degrades_to_fallback).
+# ---------------------------------------------------------------------------
+
+class FakeInventedQuoteRenderer:
+    """Redator primario fake: JSON estruturalmente valido, citacao inventada.
+
+    O contrato (app/llm/base.GROUNDED_JSON_CONTRACT) exige que `quote` seja
+    copia literal do trecho recuperado — aqui ela nao aparece em nenhum
+    trecho do bundle, entao validate_grounded_draft precisa reprovar o
+    rascunho com "citação não encontrada", e o Router (app/llm/router.py)
+    precisa degradar para o fallback.
+    """
+
+    name = "invented"
+
+    def render(self, ctx):
+        return json.dumps({
+            "steps": [{
+                "action": "trocar o rolamento imediatamente",
+                "family": "correia",
+                "evidence_id": "correia:E1",
+                "quote": "texto que nao existe em nenhum chunk recuperado",
+            }],
+            "unanswered": [],
+        })
+
+
+def test_reprovacao_do_validador_degrada_a_resposta_final_do_chat():
+    router = Router(primary=FakeInventedQuoteRenderer(), fallback=TemplateRenderer())
+    pipeline = _pipeline(
+        _df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK}, router=router)
+
+    rep = pipeline.answer_question("como corrijo a correia?")
+
+    assert rep.status == "answered"
+    assert rep.degraded is True
+    assert rep.validation_errors
+    assert any("citação não encontrada" in e for e in rep.validation_errors)
