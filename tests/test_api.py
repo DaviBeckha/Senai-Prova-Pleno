@@ -255,6 +255,40 @@ def test_eventos_sem_session_factory_nao_persiste():
     assert r.status_code == 200
 
 
+def test_eventos_rollback_transacional_quando_diagnosis_falha(monkeypatch):
+    # Transacao unica: se a gravacao do Diagnosis falhar apos o Event ja ter
+    # sido adicionado a sessao, nada pode ficar persistido — nem o Event
+    # (que ficaria orfao sem diagnostico). Simula a falha fazendo o proprio
+    # construtor de Diagnosis levantar, depois que o Event ja passou por
+    # session.add() (equivalente a um INSERT de Diagnosis falhando no meio
+    # da transacao).
+    factory = _session_factory_memoria()
+    app = create_app(skip_bootstrap=True)
+    pipeline = FakePipeline()
+    state = AppState(pipeline=pipeline, registry=None, index=None, df=None,
+                     session_factory=factory)
+    app.dependency_overrides[get_state] = lambda: state
+    client = TestClient(app)
+
+    def _diagnosis_init_boom(self, *args, **kwargs):
+        raise RuntimeError("falha simulada na insercao do diagnostico")
+
+    monkeypatch.setattr(Diagnosis, "__init__", _diagnosis_init_boom)
+
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    r = client.post("/eventos", json=body)
+
+    assert r.status_code == 500
+    assert "falha ao registrar o diagnóstico" in r.json()["detail"]
+
+    with factory() as session:
+        events = list(session.scalars(select(Event)).all())
+        diagnoses = list(session.scalars(select(Diagnosis.id)).all())
+
+    assert events == []
+    assert diagnoses == []
+
+
 def test_documentos_extensao_nao_suportada():
     client, _ = _client_com_pipeline()
     r = client.post(
@@ -607,6 +641,58 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
             data={"family": "correia", "title": "doc teste"},
         )
         assert r2.status_code == 409
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch):
+    # Segunda linha de defesa: o dedup do register() (select-then-insert) tem
+    # uma janela de race entre dois requests concorrentes que leem
+    # has_document()==False antes de qualquer um commitar. Simula esse
+    # cenario de forma deterministica: has_document() sempre reporta "nao
+    # existe" (bypassa o pre-check da rota) e register() perde seu proprio
+    # check interno (bypassa o pre-check dele tambem) — a segunda gravacao
+    # exata esbarra na UniqueConstraint real do banco (IntegrityError), que a
+    # rota precisa traduzir para o mesmo 409 dos outros caminhos de dedup.
+    from app.data.models import Document
+    from app.data.registry import DocumentRegistry
+
+    try:
+        client, registry, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
+
+        monkeypatch.setattr(
+            DocumentRegistry, "has_document",
+            lambda self, family, title=None: False,
+        )
+
+        def _register_sem_dedup_interno(self, family, title, source_path):
+            with self._factory() as session:
+                session.add(Document(family=family, title=title.strip(),
+                                     source_path=source_path))
+                session.commit()
+
+        monkeypatch.setattr(DocumentRegistry, "register", _register_sem_dedup_interno)
+
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Race"},
+        )
+        assert r1.status_code == 200
+        assert len(list(tmp_path.iterdir())) == 1
+
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Race"},
+        )
+        assert r2.status_code == 409
+        assert "documento já cadastrado" in r2.json()["detail"]
+
+        # Arquivo do segundo upload nao deve sobrar em disco.
+        assert len(list(tmp_path.iterdir())) == 1
     finally:
         get_settings.cache_clear()
 
