@@ -2,6 +2,7 @@ import logging
 from dataclasses import dataclass, field
 
 from app.llm.base import RenderContext, Renderer
+from app.llm.adequacy import AnswerAdequacyError, validate_answer_adequacy
 from app.llm.grounding import (
     GroundingValidationError,
     format_grounded_draft,
@@ -21,6 +22,7 @@ class RenderOutcome:
     # passou na validacao — o que distingue "modelo indisponivel" de "modelo
     # respondeu, mas sem suporte na evidencia".
     validation_errors: tuple[str, ...] = field(default_factory=tuple)
+    answer_status: str = "answered"
 
 
 class Router:
@@ -42,10 +44,30 @@ class Router:
             errors = validate_grounded_draft(draft, ctx)
             if errors:
                 raise GroundingValidationError(" | ".join(errors))
+            adequacy_errors = validate_answer_adequacy(draft, ctx)
+            if adequacy_errors:
+                raise AnswerAdequacyError(" | ".join(adequacy_errors))
             return RenderOutcome(
                 format_grounded_draft(draft, ctx),
                 self._primary.name,
                 False,
+            )
+        except AnswerAdequacyError as exc:
+            errors = tuple(str(exc).split(" | "))
+            log.warning(
+                "renderer %s produziu resposta fundamentada mas inadequada: %s",
+                self._primary.name,
+                exc,
+            )
+            return RenderOutcome(
+                (
+                    "As evidências recuperadas não permitiram responder à ação "
+                    "solicitada com completude. A orientação foi retida."
+                ),
+                self._fallback.name,
+                True,
+                errors,
+                "insufficient_evidence",
             )
         except Exception as exc:
             log.exception(

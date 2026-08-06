@@ -21,6 +21,7 @@ from app.guardrails.safety import (
     safety_evidence_limitation,
 )
 from app.llm.base import DiagnosisContext
+from app.llm.adequacy import validate_evidence_adequacy
 from app.llm.router import Router
 from app.rag.retrieval import retrieve_evidence
 from app.similarity.engine import SimilarityEngine
@@ -244,6 +245,22 @@ class PrescriptivePipeline:
                 analysis.explicit_families,
             )
 
+        adequacy_errors = validate_evidence_adequacy(analysis, bundle)
+        if adequacy_errors:
+            return ChatReport(
+                status="insufficient_evidence",
+                message=(
+                    "Os trechos recuperados não cobrem todas as famílias e "
+                    "ações solicitadas. Não vou completar a orientação por "
+                    "inferência."
+                ),
+                families=analysis.explicit_families,
+                sources=tuple(sorted({
+                    item.chunk.source for item in bundle.items
+                })),
+                validation_errors=adequacy_errors,
+            )
+
         limitations.extend(bundle.limitations)
         if undocumented:
             limitations.append(
@@ -259,15 +276,18 @@ class PrescriptivePipeline:
             for family in documented
         }
         context = ChatContext(
-            effective_question,
-            documented,
-            stats_by_family,
-            bundle,
-            tuple(limitations),
+            question=effective_question,
+            families=documented,
+            stats_by_family=stats_by_family,
+            retrieval=bundle,
+            limitations=tuple(limitations),
+            requested_actions=analysis.requested_actions,
+            requires_safety=analysis.requires_safety,
+            conditions=analysis.conditions,
         )
         outcome = self._pick_router(mode).render(context)
         return ChatReport(
-            status="answered",
+            status=outcome.answer_status,
             message=outcome.text,
             families=analysis.explicit_families,
             sources=tuple(sorted({item.chunk.source for item in bundle.items})),

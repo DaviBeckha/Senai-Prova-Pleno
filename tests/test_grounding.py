@@ -85,6 +85,15 @@ def test_acao_sem_suporte_lexical():
     assert any("suporte lexical" in e for e in errors)
 
 
+def test_flexao_verbal_proxima_mantem_suporte_lexical():
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Afrouxe os parafusos do motor",
+            quote="Afrouxar os parafusos do motor")]), FakeCtx())
+
+    assert errors == ()
+
+
 def test_rascunho_vazio_e_invalido():
     errors = validate_grounded_draft(GroundedDraft(), FakeCtx())
     assert any("rascunho vazio" in e for e in errors)

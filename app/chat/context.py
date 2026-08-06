@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from app.core.maintenance_intent import MaintenanceAction
 from app.rag.search import RetrievalBundle
 from app.similarity.stats import OccurrenceStats
 
@@ -19,3 +20,6 @@ class ChatContext:
     stats_by_family: dict[str, OccurrenceStats]
     retrieval: RetrievalBundle
     limitations: tuple[str, ...] = ()
+    requested_actions: tuple[MaintenanceAction, ...] = ()
+    requires_safety: bool = False
+    conditions: frozenset[str] = frozenset()

@@ -60,6 +60,15 @@ def _tokens(value: str) -> set[str]:
     }
 
 
+def _lexically_supported(action_token: str, quote_tokens: set[str]) -> bool:
+    if action_token in quote_tokens:
+        return True
+    if len(action_token) < 5:
+        return False
+    stem = action_token[:5]
+    return any(len(token) >= 5 and token[:5] == stem for token in quote_tokens)
+
+
 def evidence_items_for(ctx) -> tuple[EvidenceItem, ...]:
     """Evidencia identificada dos dois contextos.
 
@@ -135,8 +144,13 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
             errors.append(f"passo {position}: número sem suporte na citação")
         action_tokens = _tokens(step.action)
         quote_tokens = _tokens(step.quote)
+        supported_tokens = {
+            token
+            for token in action_tokens
+            if _lexically_supported(token, quote_tokens)
+        }
         support_ratio = (
-            len(action_tokens & quote_tokens) / len(action_tokens)
+            len(supported_tokens) / len(action_tokens)
             if action_tokens
             else 0.0
         )
