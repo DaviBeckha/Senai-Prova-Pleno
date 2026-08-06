@@ -126,3 +126,12 @@ def test_eventos_sobrevive_com_ollama_fora_do_ar():
     assert "Doc4.pdf" not in data["mensagem"]
     assert "Afrouxar os parafusos do motor" in data["mensagem"]
     assert data["fontes"] == ["Doc4.pdf"]
+    assert data["evidencias"] == [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": (
+            "1. Afrouxar os parafusos do motor. 2. Ajustar a tensao."
+        ),
+    }]

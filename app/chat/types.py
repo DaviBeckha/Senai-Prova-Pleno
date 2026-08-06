@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.core.maintenance_intent import MaintenanceAction
+from app.rag.search import EvidenceItem
 
 
 class ChatIntent(StrEnum):
@@ -52,3 +53,6 @@ class ChatReport:
     # "modelo fora do ar" de "modelo inventou" — os dois chegam com
     # degraded=True, mas so o segundo traz motivos aqui.
     validation_errors: tuple[str, ...] = ()
+    # Evidencia estruturada para clientes auditarem a resposta sem extrair
+    # metadados de dentro do Markdown apresentado ao operador.
+    evidence: tuple[EvidenceItem, ...] = ()

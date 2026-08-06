@@ -28,6 +28,7 @@ from app.llm.base import DiagnosisContext
 from app.llm.adequacy import validate_evidence_adequacy
 from app.llm.router import Router
 from app.rag.retrieval import retrieve_evidence
+from app.rag.search import EvidenceItem
 from app.similarity.engine import SimilarityEngine
 from app.similarity.stats import occurrence_stats
 
@@ -91,6 +92,7 @@ class DiagnosisReport:
     candidate_families: list[str] = field(default_factory=list)
     top_vote_share: float = 0.0
     vote_margin: int = 0
+    evidence: tuple[EvidenceItem, ...] = ()
 
 
 class PrescriptivePipeline:
@@ -158,7 +160,8 @@ class PrescriptivePipeline:
                     sources: list[str] | None = None,
                     renderer: str | None = None,
                     degraded: bool = False,
-                    validation_errors: tuple[str, ...] | list[str] = ()) -> DiagnosisReport:
+                    validation_errors: tuple[str, ...] | list[str] = (),
+                    evidence: tuple[EvidenceItem, ...] = ()) -> DiagnosisReport:
             return DiagnosisReport(
                 status=status,
                 family=decision.family,
@@ -174,6 +177,7 @@ class PrescriptivePipeline:
                 last_seen=stats.last_seen,
                 per_day=stats.per_day,
                 validation_errors=list(validation_errors),
+                evidence=evidence,
                 **result_metadata,
             )
 
@@ -216,6 +220,7 @@ class PrescriptivePipeline:
             renderer=outcome.renderer,
             degraded=outcome.degraded,
             validation_errors=outcome.validation_errors,
+            evidence=tuple(bundle.items),
         )
 
     def answer_question(self, pergunta: str, mode: str | None = None) -> ChatReport:
@@ -339,6 +344,7 @@ class PrescriptivePipeline:
                     item.chunk.source for item in bundle.items
                 })),
                 validation_errors=adequacy_errors,
+                evidence=tuple(bundle.items),
             )
 
         limitations.extend(bundle.limitations)
@@ -379,4 +385,5 @@ class PrescriptivePipeline:
             degraded=outcome.degraded,
             limitations=tuple(limitations),
             validation_errors=outcome.validation_errors,
+            evidence=tuple(bundle.items),
         )
