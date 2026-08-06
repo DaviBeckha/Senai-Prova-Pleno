@@ -1,0 +1,19 @@
+# Dependencias da imagem do dashboard (Streamlit).
+#
+# O dashboard e cliente puro da API: nao importa nada de app/ nem de scripts/, e
+# nao le arquivo do disco. Antes ele importava app.data.labels e
+# scripts.simulator, entao a imagem precisava do requirements.txt completo — e
+# com ele vinham torch (>2 GB), sentence-transformers, faiss-cpu, scikit-learn,
+# sqlalchemy, psycopg, pypdf, openpyxl e openai, nenhum deles usado pela
+# interface.
+#
+# Sao exatamente os tres pacotes que o codigo de dashboard/ importa; o resto e
+# biblioteca padrao. pandas nao esta aqui porque nada em dashboard/ o importa —
+# ele entra de todo modo como dependencia do proprio streamlit.
+#
+# Versoes fixadas iguais as de requirements.txt: httpx precisa concordar com o
+# que a API espera receber, e uma divergencia de streamlit/plotly mudaria o
+# comportamento da interface sem aviso.
+streamlit==1.40.2
+plotly==5.24.1
+httpx==0.28.1

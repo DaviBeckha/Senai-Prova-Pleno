@@ -76,9 +76,9 @@ class DiagnosisReport:
     per_day: dict[str, int]
     # Por que a geracao foi rejeitada pela validacao de fundamentacao.
     # answer_question ja propagava outcome.validation_errors; diagnose()
-    # descartava, e o campo nem existia aqui. Sem ele, os 43,75% de respostas
-    # que caem em template extrativo (medido em eval_results/2026-08-06/
-    # summary.json) chegam a tela indistinguiveis de uma geracao aceita.
+    # descartava, e o campo nem existia aqui. Sem ele, as respostas que caem em
+    # template extrativo — 43,75% das geracoes numa avaliacao local do modo
+    # offline — chegam a tela indistinguiveis de uma geracao aceita.
     validation_errors: list[str]
 
 

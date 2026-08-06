@@ -9,10 +9,18 @@ docs/
 .env
 
 # Ambiente virtual e cache Python — reinstalado via requirements.txt.
+# Tres grafias porque .gitignore aceita as tres (venv/, .venv/, env/) e um
+# ambiente local esquecido no contexto de build custa centenas de MB por build.
 venv/
+.venv/
+env/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Resultados de avaliacao manual do modelo — registro de medicao, nao insumo
+# de build.
+eval_results/
 
 # Dados locais gerados em runtime (indice FAISS, etc.) — nao sao insumo de
 # build; docs_fontes/ (transcricao do Doc1) e os Doc2-6.pdf SAO insumo e

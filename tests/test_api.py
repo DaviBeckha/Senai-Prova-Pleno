@@ -126,10 +126,10 @@ def test_eventos_expoe_janela_de_ocorrencias():
 
 
 def test_eventos_expoe_erros_de_validacao():
-    # recommended_order[7] de eval_results/2026-08-06/summary.json: o motivo da
-    # rejeicao existia apenas no log do servidor. Sem ele na resposta, uma
-    # mensagem em template extrativo chega a tela indistinguivel de uma
-    # geracao aceita pelo grounding.
+    # O motivo da rejeicao existia apenas no log do servidor: answer_question
+    # propagava outcome.validation_errors, diagnose() descartava. Sem ele na
+    # resposta, uma mensagem em template extrativo chega a tela indistinguivel
+    # de uma geracao aceita pelo grounding.
     body = {c: 0.1 for c in FEATURE_COLUMNS}
     data = _client().post("/eventos", json=body).json()
     assert data["erros_de_validacao"] == [

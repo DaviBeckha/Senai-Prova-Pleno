@@ -84,13 +84,15 @@ class DiagnosticoOut(BaseModel):
     degradado: bool
     # Por que a geracao foi rejeitada pela validacao de fundamentacao. Sem
     # este campo, uma resposta em template extrativo chega indistinguivel de
-    # uma geracao aceita — e a medicao em eval_results/2026-08-06/summary.json
-    # registra 43,75% de rejeicao no modo offline.
+    # uma geracao aceita — e numa avaliacao local do modo offline
+    # (qwen2.5:7b-instruct em CPU, 16 geracoes) 7 delas, 43,75%, foram
+    # rejeitadas pelo grounding e cairam no template.
     erros_de_validacao: list[str]
-    # Distribuicao completa do voto kNN, nao so a familia vencedora: em
-    # eval_results/.../diagnosis-results.json (DIAG-001..003) a vencedora tinha
-    # 9 de 50 votos e EMPATAVA com outras duas familias. Sem a distribuicao, a
-    # tela apresenta um empate de 18% como diagnostico conclusivo.
+    # Distribuicao completa do voto kNN, nao so a familia vencedora: na mesma
+    # avaliacao, tres repeticoes do payload de correia elegeram a familia com
+    # 9 de 50 votos, EMPATADA com rolamento_outer e rolamento_ball. Sem a
+    # distribuicao, a tela apresenta um empate de 18% como diagnostico
+    # conclusivo.
     votos_por_familia: dict[str, int]
     vizinhos_consultados: int
 
