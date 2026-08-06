@@ -280,7 +280,7 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     # app/pipeline.py): os trechos do fake nao tem vocabulario de seguranca
     # (desligar/bloqueio/etiquetagem/...), entao a resposta sai com a
     # limitacao anexada — mesmo sem ser recusada.
-    assert any("não autoriza a execução" in l for l in rep.limitations)
+    assert any("não autoriza a execução" in limitation for limitation in rep.limitations)
 
 
 # Formas conjugadas (imperativo/gerundio) dos verbos de intervencao: antes

@@ -6,7 +6,6 @@ from app.data.models import Base
 from app.data.registry import _SEED, DocumentRegistry
 from app.rag.index import VectorIndex
 from scripts.bootstrap import (
-    PDF_MAP,
     _bootstrap_seed_paths,
     ingest_registry_documents,
     make_router,
