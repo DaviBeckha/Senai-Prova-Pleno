@@ -46,7 +46,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       UPLOADS_DIR: /srv/data_uploads
     ports: ["127.0.0.1:8000:8000"]
-    volumes: [uploads:/srv/data_uploads]
+    # hf_cache: o modelo de embeddings e5 (~1 GB) e baixado em runtime pelo
+    # sentence-transformers no lifespan da app, para o cache padrao do
+    # HuggingFace. Sem este volume, todo `up --build` (ou qualquer recriacao do
+    # container) descarta o cache e refaz o download antes de a API ficar ready.
+    volumes: [uploads:/srv/data_uploads, hf_cache:/root/.cache/huggingface]
     # curl nao existe na imagem python:3.12-slim — usa o proprio python.
     # start_period generoso: o bootstrap baixa o modelo de embeddings e5
     # (~1 GB) na primeira subida.
@@ -68,3 +72,4 @@ services:
 volumes:
   ollama:
   uploads:
+  hf_cache:
