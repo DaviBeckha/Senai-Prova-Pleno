@@ -97,7 +97,7 @@ _EXPLICIT_PHYSICAL_FRAGMENT = (
     r"(?:re)?lubrific(?:ar|ando|ou|amos|aram|ava|avam)|"
     r"(?:repar|consert|trat|instal|desmont)"
     r"(?:ar|ando|ou|amos|aram|ava|avam)|"
-    r"remov(?:er|endo|eu|emos|eram|ia|iam)|"
+    r"remov(?:er|endo|eu|emos|eram|ia|iam|a|am)|"
     r"mex(?:er|a|am|endo|eu|e|em|o|i|emos|eram|ia|iam|id[oa]s?)|"
     r"abr(?:ir|a|am|e|em|o|i|imos|iram|ia|iam|indo|iu)|abert[oa]s?|"
     r"substitu(?:ir|indo|iu|o|a|am|i|em|imos|iram|ia|iam)|"
@@ -116,7 +116,7 @@ _AMBIGUOUS_IMPERATIVE = re.compile(
     rf"\b(?:{_AMBIGUOUS_IMPERATIVE_FRAGMENT})\b"
 )
 _COORDINATED_IMPERATIVE = re.compile(
-    rf"\b(?:e|tambem|depois|entao)\s+(?:por favor\s+)?"
+    rf"\b(?:e|mas|ou|tambem|depois|entao)\s+(?:por favor\s+)?"
     rf"(?:{_AMBIGUOUS_IMPERATIVE_FRAGMENT})\b"
 )
 _EXPLANATION_REQUEST = re.compile(
@@ -228,6 +228,7 @@ def has_explicit_physical_intervention(value: str) -> bool:
     return bool(
         _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized)
         or _COORDINATED_IMPERATIVE.search(normalized)
+        or _AMBIGUOUS_IMPERATIVE.match(normalized)
     )
 
 
