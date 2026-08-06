@@ -25,7 +25,7 @@ class OllamaRenderer:
                 "stream": False,
                 # format=json obriga o Ollama a devolver JSON parseavel;
                 # temperature=0 + seed fixa tornam a mesma pergunta reprodutivel,
-                # que e pre-requisito para os evals do Plano 4.
+                # que e pre-requisito para os evals de qualidade do redator.
                 "format": "json",
                 "options": {
                     "temperature": 0,

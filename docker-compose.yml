@@ -17,49 +17,68 @@ services:
 
   # Ollama local (modo offline / fallback do modo online sem OPENAI_API_KEY).
   #
-  # ATENCAO — GPU no Docker Desktop (Windows/WSL2): o bloco `deploy:` abaixo
-  # reserva uma GPU NVIDIA via nvidia-container-toolkit. Se a maquina nao
-  # tiver esse toolkit configurado, `docker compose up` falha ao subir o
-  # servico ollama. Duas saidas:
-  #   1) Remover o bloco `deploy:` inteiro e rodar o Ollama em CPU dentro do
-  #      container (mais lento, porem funcional).
-  #   2) Usar o Ollama nativo do Windows (fora do Docker) e apontar a API
-  #      para ele via OLLAMA_BASE_URL=http://host.docker.internal:11434 no
-  #      servico `api` abaixo — nesse caso, remova o servico `ollama` deste
-  #      compose (ou apenas nao o inicie).
+  # CPU e o modo padrao oficial deste compose: sobe em qualquer maquina, sem
+  # dependencia de driver ou toolkit de GPU (mais lento, porem funcional e
+  # universal). Duas alternativas para acelerar:
+  #   1) GPU NVIDIA via override opt-in: docker compose -f docker-compose.yml
+  #      -f docker-compose.gpu.yml up --build (requer nvidia-container-toolkit
+  #      configurado no Docker).
+  #   2) Ollama nativo do Windows (fora do Docker), apontando a API para ele
+  #      via OLLAMA_BASE_URL=http://host.docker.internal:11434 no servico
+  #      `api` abaixo — nesse caso, remova o servico `ollama` deste compose
+  #      (ou apenas nao o inicie).
   ollama:
     image: ollama/ollama:latest
     ports: ["127.0.0.1:11434:11434"]
     volumes: [ollama:/root/.ollama]
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+    # "unhealthy" ate o `docker exec ... ollama pull qwen2.5:7b-instruct`
+    # manual do primeiro uso e o sinal ESPERADO — nao ha depends_on condition:
+    # service_healthy do servico `api` para este, de proposito: a API sobe
+    # mesmo sem o modelo puxado e o Router degrada para o template.
+    # Exec form (sem shell): "ollama show" retorna exit != 0 quando o modelo
+    # nao esta presente, sem depender de grep existir na imagem. A
+    # interpolacao ${OLLAMA_MODEL:-...} mantem o healthcheck acompanhando o
+    # mesmo modelo configurado no servico `api`.
+    healthcheck:
+      test: ["CMD", "ollama", "show", "${OLLAMA_MODEL:-qwen2.5:7b-instruct}"]
+      interval: 15s
+      retries: 20
+      start_period: 60s
 
   api:
     build: {context: ., dockerfile: Dockerfile.api}
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-senai}:${POSTGRES_PASSWORD:-senai}@postgres:5432/${POSTGRES_DB:-manutencao}
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
       OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-8192}
       LLM_MODE: ${LLM_MODE:-offline}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      UPLOADS_DIR: /srv/data_uploads
     ports: ["127.0.0.1:8000:8000"]
+    volumes: [uploads:/srv/data_uploads]
     depends_on:
       postgres: {condition: service_healthy}
+    # curl nao existe na imagem python:3.12-slim — usa o proprio python.
+    # start_period generoso: o bootstrap baixa o modelo de embeddings e5
+    # (~1 GB) na primeira subida.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys,json; r=json.load(urllib.request.urlopen('http://localhost:8000/health', timeout=5)); sys.exit(0 if r.get('ready') else 1)\""]
+      interval: 15s
+      retries: 40
+      start_period: 120s
 
   dashboard:
     build: {context: ., dockerfile: Dockerfile.dashboard}
     environment:
       API_URL: http://api:8000
+      DASHBOARD_TIMEOUT: ${DASHBOARD_TIMEOUT:-330}
     ports: ["127.0.0.1:8501:8501"]
-    depends_on: [api]
+    depends_on:
+      api: {condition: service_started}
 
 volumes:
   pgdata:
   ollama:
+  uploads:

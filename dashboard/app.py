@@ -19,6 +19,22 @@ from scripts.simulator import build_payload
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
+
+def _resolve_request_timeout() -> float:
+    """Le DASHBOARD_TIMEOUT do ambiente com fallback defensivo.
+
+    330s = OLLAMA_TIMEOUT maximo (300s) + folga de rede, para o dashboard
+    nunca desistir antes da API/Ollama. Uma env vazia ou nao-numerica nao
+    pode derrubar o import do modulo — cai no mesmo default 330.
+    """
+    try:
+        return float(os.environ.get("DASHBOARD_TIMEOUT", "330"))
+    except ValueError:
+        return 330.0
+
+
+REQUEST_TIMEOUT = _resolve_request_timeout()
+
 st.set_page_config(page_title="Manutencao Prescritiva SENAI", layout="wide")
 st.title("Manutenção Prescritiva — SENAI SC")
 
@@ -80,7 +96,7 @@ with aba_chat:
             payload["modo"] = modo
 
             try:
-                r = httpx.post(f"{API_URL}/eventos", json=payload, timeout=180).json()
+                r = httpx.post(f"{API_URL}/eventos", json=payload, timeout=REQUEST_TIMEOUT).json()
                 st.info(f"Status: {r['status']} | Família: {r['family']} | "
                         f"Ocorrências: {r['total_ocorrencias']} ({r['freq_per_day']}/dia)")
                 st.markdown(r["message"])
@@ -117,7 +133,7 @@ with aba_chat:
         try:
             resp = httpx.post(f"{API_URL}/chat",
                             json={"pergunta": pergunta, "modo": modo},
-                            timeout=180).json()
+                            timeout=REQUEST_TIMEOUT).json()
             with st.chat_message("assistant"):
                 st.write(resp["resposta"])
                 if resp["fontes"]:
@@ -129,7 +145,7 @@ with aba_chat:
 
 with aba_doc:
     st.subheader("Registrar novo documento orientativo")
-    up = st.file_uploader("PDF do procedimento", type=["pdf"])
+    up = st.file_uploader("Documento do procedimento", type=["pdf", "md", "txt"])
     fam = st.text_input("Família da falha (ex.: ventoinha)")
     titulo = st.text_input("Título do documento")
     if st.button("Registrar") and up and fam and titulo:

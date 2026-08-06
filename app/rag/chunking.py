@@ -19,7 +19,13 @@ def chunk_text(text: str, doc_family: str, source: str, max_chars: int = 1500) -
     chunks: list[Chunk] = []
     if not matches:
         for i in range(0, len(text), max_chars):
-            chunks.append(Chunk(doc_family, source, f"parte {i // max_chars + 1}", text[i:i + max_chars]))
+            segment = text[i:i + max_chars]
+            # Segmentos 100% whitespace (ex.: PDF escaneado, sem camada de
+            # texto extraivel — extract_text() devolve "" por pagina e o join
+            # sobra so quebras de linha) nao viram chunk: seria
+            # evidencia-lixo que "documenta" a familia sem conteudo real.
+            if segment.strip():
+                chunks.append(Chunk(doc_family, source, f"parte {i // max_chars + 1}", segment))
         return chunks
     for i, m in enumerate(matches):
         start = m.start()

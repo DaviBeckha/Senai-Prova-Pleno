@@ -328,15 +328,22 @@ curl http://localhost:8000/health
 # http://localhost:8501
 ```
 
-**Sem GPU NVIDIA disponível no Docker Desktop**: o serviço `ollama` do compose reserva uma
-GPU (bloco `deploy:`) e falha ao subir sem `nvidia-container-toolkit` configurado. Duas
-saídas, documentadas como comentário no próprio `docker-compose.yml`:
+**CPU é o padrão do compose — GPU é opt-in.** `docker-compose.yml` sozinho não reserva GPU
+nenhuma: o serviço `ollama` sobe em CPU, sem depender de driver ou toolkit de GPU (mais
+lento, porém funcional e universal — é o comando do passo 2 acima). Duas formas de acelerar,
+quando há GPU NVIDIA disponível:
 
-1. Remover o bloco `deploy:` do serviço `ollama` — roda em CPU dentro do container, mais
-   lento, porém funcional.
-2. Usar o Ollama nativo do Windows (fora do Docker) e apontar
-   `OLLAMA_BASE_URL=http://host.docker.internal:11434` no serviço `api`, sem subir o
-   serviço `ollama` do compose (`docker compose up --build api dashboard postgres`).
+1. **GPU via override explícito**: `docker compose -f docker-compose.yml -f
+   docker-compose.gpu.yml up --build`. O `docker-compose.gpu.yml` só acrescenta o bloco
+   `deploy:` de reserva de GPU ao serviço `ollama` — requer `nvidia-container-toolkit`
+   configurado no Docker Desktop/daemon; sem `-f docker-compose.gpu.yml`, esse bloco nunca
+   entra no stack.
+2. **Ollama nativo do Windows** (fora do Docker): instalar o Ollama direto no host e definir
+   `OLLAMA_BASE_URL=http://host.docker.internal:11434` no `.env` do projeto (ou exportar na
+   shell antes de subir o compose) — o serviço `api` já lê essa variável do ambiente
+   (`OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}` em `docker-compose.yml`, mesmo
+   padrão das demais variáveis do bloco). Depois, subir sem o serviço `ollama` do compose
+   (`docker compose up --build api dashboard postgres`).
 
 ### 6.2 Execução local (sem Docker)
 
@@ -386,6 +393,7 @@ python -m scripts.simulator --n 10 --intervalo 3
 | `RAG_K` | `4` | Trechos recuperados por família em uma busca focada |
 | `RAG_MIN_SCORE` | `0.82` | Cosseno mínimo para um trecho contar como evidência (ver "Evidência e relevância no chat") |
 | `RAG_COMPLETE_MAX_CHARS` | `12000` | Teto de caracteres por família em pedidos de "procedimento completo"; o excedente vira limitação declarada |
+| `DASHBOARD_TIMEOUT` | `330` | Segundos até o dashboard desistir de uma chamada à API (folga sobre `OLLAMA_TIMEOUT` para nunca desistir antes da API/Ollama); repassado pelo compose (`.env` do host → serviço `dashboard`) |
 
 ### 6.4 Postura de segurança do protótipo
 
@@ -417,30 +425,33 @@ automaticamente pelo FastAPI).
 
 ### `POST /eventos` — caso 1: falha documentada (diagnóstico completo)
 
-Payload de exemplo (o mesmo evento de exemplo do enunciado da prova, `fault: cocked_rotor_2`
-→ família `cocked_rotor`, documentada por `Doc6.pdf`):
+Payload real (linha `id=112602` de `banner.xlsx`, `fault` original `cocked_rotor_2` → família
+`cocked_rotor`, documentada por `Doc6.pdf` — escolhida pelo mesmo método de `demo/README.md`:
+iterar linhas reais da família até achar uma cujo `diagnose()` devolva `diagnostico`/
+`cocked_rotor` no pipeline completo, não o índice fake). Os valores vêm sem qualquer reescala,
+com a mesma sujeira de tipo do dataset real (inteiro em vez de decimal em vários campos)
+descrita na seção 4(b):
 
 ```json
 {
-  "z_rms_velocity_in_s": 0.0597, "z_rms_velocity_mm_s": 1.517,
-  "temperature_f": 76.44, "temperature_c": 24.69,
-  "x_rms_velocity_in_s": 0.0787, "x_rms_velocity_mm_s": 2.0,
-  "z_peak_acceleration_g": 0.484, "x_peak_acceleration_g": 0.631,
+  "z_rms_velocity_in_s": 671.0, "z_rms_velocity_mm_s": 1706.0,
+  "temperature_f": 75.59, "temperature_c": 24.22,
+  "x_rms_velocity_in_s": 883.0, "x_rms_velocity_mm_s": 2243.0,
+  "z_peak_acceleration_g": 0.6, "x_peak_acceleration_g": 1037.0,
   "z_peak_vel_comp_freq_hz": 61.0, "x_peak_vel_comp_freq_hz": 61.0,
-  "z_rms_acceleration_g": 0.09, "x_rms_acceleration_g": 0.114,
-  "z_kurtosis": 2.392, "x_kurtosis": 2.77,
-  "z_crest_factor": 3.747, "x_crest_factor": 4.269,
-  "z_peak_velocity_in_s": 0.0844, "z_peak_velocity_mm_s": 2.146,
-  "x_peak_velocity_in_s": 0.1113, "x_peak_velocity_mm_s": 2.829,
-  "z_high_freq_rms_accel_g": 0.129, "x_high_freq_rms_accel_g": 0.147,
-  "rpm": 1000.0,
+  "z_rms_acceleration_g": 0.14, "x_rms_acceleration_g": 149.0,
+  "z_kurtosis": 2799.0, "x_kurtosis": 2.97,
+  "z_crest_factor": 3678.0, "x_crest_factor": 3886.0,
+  "z_peak_velocity_in_s": 95.0, "z_peak_velocity_mm_s": 2413.0,
+  "x_peak_velocity_in_s": 1249.0, "x_peak_velocity_mm_s": 3172.0,
+  "z_high_freq_rms_accel_g": 163.0, "x_high_freq_rms_accel_g": 266.0,
+  "rpm": 2000.0,
   "modo": "offline"
 }
 ```
 
-Resposta (ilustrativa — o texto de `message` varia conforme o redator ativo; `total_ocorrencias`
-e `freq_per_day` são estatísticas reais computadas sobre o histórico para a família
-`cocked_rotor`):
+Resposta (ilustrativa — o texto de `message` varia conforme o redator ativo; `total_ocorrencias`,
+`freq_per_day` e `family_votes` são medidos sobre o histórico e o kNN reais para esta linha):
 
 ```json
 {
@@ -452,25 +463,44 @@ e `freq_per_day` são estatísticas reais computadas sobre o histórico para a f
   "sources": ["Doc6.pdf"],
   "renderer": "ollama",
   "degraded": false,
-  "family_votes": {"cocked_rotor": 31, "rolamento_outer": 9, "correia": 6, "polia": 4}
+  "family_votes": {"cocked_rotor": 16, "rolamento_combination": 8, "normal": 6, "rolamento_ball": 5, "correia": 5, "desalinhado": 4, "rolamento_outer": 4, "rolamento_inner": 2}
 }
 ```
 
+**Nota honesta sobre o payload literal do enunciado da prova.** O evento de exemplo do
+enunciado (mesmos 23 campos, mas em escala "limpa": `z_rms_velocity_in_s: 0.0597`,
+`z_kurtosis: 2.392` etc., em vez das dezenas/centenas/milhares acima) **não** reproduz esse
+resultado quando medido contra o pipeline real — ele cai em `status: "estado"`, `family:
+"normal"` (`family_votes`: `normal: 20, rolamento_ball: 6, correia: 5, cocked_rotor: 4, ...`).
+A causa é a mesma sujeira de escala descrita na seção 4 ("Desafios reais dos dados"): o
+`SimilarityEngine` treina o `StandardScaler`/kNN sobre a escala "suja" do `banner.xlsx`
+(valores como `671.0`, não `0.671`), então um payload com decimais pequenos fica fora da
+vizinhança de qualquer família de falha e cai perto do agrupamento `normal`/`baseline`. Não é
+um bug escondido — é um achado real sobre a fragilidade de um kNN bruto diante de escala
+inconsistente, e um ponto de discussão legítimo para a entrevista: por isso o payload usado
+para ilustrar o caminho `cocked_rotor` acima é uma linha real do dataset, não o exemplo do
+enunciado.
+
 ### `POST /eventos` — caso 2: falha sem documento (`ventoinha`)
+
+Payload real (linha `id=122940` de `banner.xlsx`, `fault` original `ventoinha_2` → família
+`ventoinha`, sem documento cadastrado — mesmo arquivo usado no roteiro de demonstração, ver
+`demo/evento_ventoinha.json` e a tabela de proveniência em `demo/README.md`). Os valores vêm
+sem qualquer reescala, com a mesma sujeira de tipo descrita na seção 4(b):
 
 ```json
 {
-  "z_rms_velocity_in_s": 583.0, "z_rms_velocity_mm_s": 1481.0,
-  "temperature_f": 76.06, "temperature_c": 24.48,
-  "x_rms_velocity_in_s": 1056.0, "x_rms_velocity_mm_s": 2684.0,
-  "z_peak_acceleration_g": 599.0, "x_peak_acceleration_g": 465.0,
-  "z_peak_vel_comp_freq_hz": 61.0, "x_peak_vel_comp_freq_hz": 56.1,
-  "z_rms_acceleration_g": 71.0, "x_rms_acceleration_g": 119.0,
-  "z_kurtosis": 2534.0, "x_kurtosis": 2554.0,
-  "z_crest_factor": 4813.0, "x_crest_factor": 3432.0,
-  "z_peak_velocity_in_s": 825.0, "z_peak_velocity_mm_s": 2095.0,
-  "x_peak_velocity_in_s": 1494.0, "x_peak_velocity_mm_s": 3796.0,
-  "z_high_freq_rms_accel_g": 124.0, "x_high_freq_rms_accel_g": 135.0,
+  "z_rms_velocity_in_s": 587.0, "z_rms_velocity_mm_s": 1493.0,
+  "temperature_f": 76.49, "temperature_c": 24.71,
+  "x_rms_velocity_in_s": 1327.0, "x_rms_velocity_mm_s": 3371.0,
+  "z_peak_acceleration_g": 0.46, "x_peak_acceleration_g": 519.0,
+  "z_peak_vel_comp_freq_hz": 58.5, "x_peak_vel_comp_freq_hz": 56.1,
+  "z_rms_acceleration_g": 74.0, "x_rms_acceleration_g": 138.0,
+  "z_kurtosis": 2422.0, "x_kurtosis": 2644.0,
+  "z_crest_factor": 3684.0, "x_crest_factor": 3809.0,
+  "z_peak_velocity_in_s": 831.0, "z_peak_velocity_mm_s": 2111.0,
+  "x_peak_velocity_in_s": 1877.0, "x_peak_velocity_mm_s": 4768.0,
+  "z_high_freq_rms_accel_g": 125.0, "x_high_freq_rms_accel_g": 136.0,
   "rpm": 500.0,
   "modo": "offline"
 }
@@ -486,7 +516,7 @@ e `freq_per_day` são estatísticas reais computadas sobre o histórico para a f
   "sources": [],
   "renderer": null,
   "degraded": false,
-  "family_votes": {"ventoinha": 22, "rolamento_outer": 10, "polia": 7}
+  "family_votes": {"ventoinha": 13, "rolamento_combination": 10, "polia": 7, "cocked_rotor": 6, "rolamento_ball": 5, "rolamento_outer": 4, "normal": 2, "eccentric_rotor": 2, "rolamento_inner": 1}
 }
 ```
 
@@ -495,19 +525,25 @@ nenhuma fonte a citar.
 
 ### `POST /eventos` — caso 3: estado de operação (`normal`)
 
+Payload real (linha `id=1782` de `banner.xlsx` — mesmo arquivo usado no roteiro de
+demonstração, ver `demo/evento_normal.json` e a tabela de proveniência em
+`demo/README.md`). Os valores vêm sem qualquer reescala: a mesma sujeira de tipo do dataset
+real (inteiro em vez de decimal em vários campos) descrita na seção 4(b) — por isso `564.0`
+em vez de `0.564`.
+
 ```json
 {
-  "z_rms_velocity_in_s": 0.564, "z_rms_velocity_mm_s": 1.433,
+  "z_rms_velocity_in_s": 564.0, "z_rms_velocity_mm_s": 1433.0,
   "temperature_f": 73.4, "temperature_c": 23.0,
-  "x_rms_velocity_in_s": 0.702, "x_rms_velocity_mm_s": 1.784,
-  "z_peak_acceleration_g": 0.362, "x_peak_acceleration_g": 0.346,
+  "x_rms_velocity_in_s": 702.0, "x_rms_velocity_mm_s": 1784.0,
+  "z_peak_acceleration_g": 362.0, "x_peak_acceleration_g": 346.0,
   "z_peak_vel_comp_freq_hz": 61.0, "x_peak_vel_comp_freq_hz": 61.0,
-  "z_rms_acceleration_g": 0.058, "x_rms_acceleration_g": 0.084,
-  "z_kurtosis": 5.323, "x_kurtosis": 4.758,
-  "z_crest_factor": 4.855, "x_crest_factor": 4.28,
-  "z_peak_velocity_in_s": 0.798, "z_peak_velocity_mm_s": 2.027,
-  "x_peak_velocity_in_s": 0.993, "x_peak_velocity_mm_s": 2.524,
-  "z_high_freq_rms_accel_g": 0.074, "x_high_freq_rms_accel_g": 0.081,
+  "z_rms_acceleration_g": 58.0, "x_rms_acceleration_g": 84.0,
+  "z_kurtosis": 5323.0, "x_kurtosis": 4758.0,
+  "z_crest_factor": 4855.0, "x_crest_factor": 4.28,
+  "z_peak_velocity_in_s": 798.0, "z_peak_velocity_mm_s": 2027.0,
+  "x_peak_velocity_in_s": 993.0, "x_peak_velocity_mm_s": 2524.0,
+  "z_high_freq_rms_accel_g": 74.0, "x_high_freq_rms_accel_g": 81.0,
   "rpm": 500.0,
   "modo": "offline"
 }
@@ -523,7 +559,7 @@ nenhuma fonte a citar.
   "sources": [],
   "renderer": null,
   "degraded": false,
-  "family_votes": {"normal": 44, "desbalanceado": 3, "motor_desligado": 2, "baseline": 1}
+  "family_votes": {"normal": 28, "motor_desligado": 16, "rolamento_combination": 2, "baseline": 2, "rolamento_ball": 1, "cocked_rotor": 1}
 }
 ```
 
@@ -598,7 +634,7 @@ resposta declara explicitamente que não representa o documento completo.
 
 ### `POST /documentos` — registrar novo documento (habilita a família imediatamente)
 
-Multipart form: `file` (PDF), `family` (ex. `ventoinha`), `title`.
+Multipart form: `file` (`.pdf`, `.md` ou `.txt`), `family` (ex. `ventoinha`), `title`.
 
 ```
 POST /documentos

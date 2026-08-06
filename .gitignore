@@ -18,6 +18,7 @@ docker-compose.override.yml
 
 # Dados e indices locais
 data_local/
+data_uploads/
 *.faiss
 
 # Cache de ferramentas

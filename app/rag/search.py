@@ -1,8 +1,9 @@
 """Valores de recuperacao: o que foi buscado, com que score, e sob que rotulo.
 
 O `evidence_id` existe para que a resposta gerada possa apontar para um trecho
-especifico em vez de citar "o documento" em bloco — e o gancho que o Plano 3
-usa para validar cada afirmacao contra a evidencia que a sustenta.
+especifico em vez de citar "o documento" em bloco — e o gancho que a validacao
+de fundamentacao (app/llm/grounding.py) usa para conferir cada afirmacao
+contra a evidencia que a sustenta.
 """
 
 from dataclasses import dataclass

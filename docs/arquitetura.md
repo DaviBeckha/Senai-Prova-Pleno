@@ -15,8 +15,27 @@ engenharia (API documentada e schema de banco versionado).
 ### 1. Subir o ambiente
 
 ```powershell
+# Caminho padrao: CPU, funciona em qualquer maquina (sem driver/toolkit de GPU)
 docker compose up --build
+
+# Alternativa com GPU NVIDIA (override opt-in; requer nvidia-container-toolkit)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+```
+
+```powershell
+# Primeiro uso: o volume do Ollama comeca vazio — puxar o modelo local
 docker exec -it senai-prova-pleno-ollama-1 ollama pull qwen2.5:7b-instruct
+# (o nome exato do container pode variar — conferir com `docker compose ps`)
+```
+
+**Diagnóstico visual do boot**: `docker compose ps` mostra o `STATUS` de cada serviço.
+`ollama` aparece **unhealthy** até o `ollama pull` acima terminar — é o sintoma esperado do
+primeiro uso, não uma falha do compose (o healthcheck roda `ollama show
+qwen2.5:7b-instruct`, que só passa com o modelo já baixado). `postgres` e `api` ficam
+`healthy` independentemente do Ollama — a API sobe mesmo sem o modelo local, e o Router
+degrada para o template enquanto ele não chega (ver quadro "se X falhar, faça Y" abaixo).
+
+```powershell
 curl http://localhost:8000/health
 ```
 
@@ -34,9 +53,20 @@ cálculo de estatísticas de ocorrência.
 
 ### 3. Evento de `correia` — diagnóstico completo, modo offline
 
-Na aba "Diagnóstico & Chat", com o toggle de modo **desligado** (offline/Ollama), selecionar a
-família `correia` e clicar em "Sortear evento aleatório da família". Narrar o que aparece na
-tela, mapeando para o fluxo do diagrama do README:
+Passo oficial (determinístico, sem depender de sorteio ao vivo): `demo/evento_correia.json` —
+ver `demo/README.md` para o mapa completo dos três payloads, a linha de origem (`id=102543`
+em `banner.xlsx`) e os comandos `curl`/`Invoke-RestMethod` prontos.
+
+```powershell
+$body = Get-Content -Raw demo/evento_correia.json
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/eventos `
+  -ContentType "application/json" -Body $body
+```
+
+Alternativa ao vivo no dashboard: aba "Diagnóstico & Chat", toggle de modo **desligado**
+(offline/Ollama), família `correia`, "Sortear evento aleatório da família" (sorteia outra
+linha real de `correia`, resultado equivalente, porém não determinístico). Narrar o que
+aparece na tela, mapeando para o fluxo do diagrama do README:
 
 1. O evento sorteado (linha real do `banner.xlsx`) é enviado para `POST /eventos`.
 2. O motor de similaridade classifica a família dominante entre os 50 vizinhos mais próximos
@@ -51,23 +81,72 @@ hardware da prova (estação com até 32 GB RAM / GPU 16 GB).
 
 ### 4. Evento de `ventoinha` — contenção anti-alucinação
 
-Repetir o mesmo fluxo selecionando a família `ventoinha`. A resposta muda de
-`status: "diagnostico"` para `status: "sem_documento"`: "problema identificado como
-'ventoinha', porém ainda não existe documento orientativo cadastrado... registre um novo
-documento". Destacar explicitamente que **o LLM não foi chamado** nesse caminho — é uma
-decisão de código (`app/guardrails/policy.py`), não uma instrução de prompt que o modelo
-pode ou não seguir. Esse é o ponto que mais dialoga com o critério de entrevista "alucinação
-do modelo".
+Passo oficial: `demo/evento_ventoinha.json` (`id=122940`, família `ventoinha`, sem documento
+cadastrado — ver `demo/README.md`).
+
+```powershell
+$body = Get-Content -Raw demo/evento_ventoinha.json
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/eventos `
+  -ContentType "application/json" -Body $body
+```
+
+A resposta vem `status: "sem_documento"`: "problema identificado como 'ventoinha', porém
+ainda não existe documento orientativo cadastrado... registre um novo documento". Destacar
+explicitamente que **o LLM não foi chamado** nesse caminho — é uma decisão de código
+(`app/guardrails/policy.py`), não uma instrução de prompt que o modelo pode ou não seguir.
+Esse é o ponto que mais dialoga com o critério de entrevista "alucinação do modelo".
+
+Terceiro payload oficial, para completar o mapa de `demo/README.md`: `demo/evento_normal.json`
+(`id=1782`) devolve `status: "estado"` — reforça que `normal`/`baseline`/`teste`/
+`acelerando`/`motor_desligado` nunca são tratados como falha, mesmo reconhecidos pelo kNN.
 
 ### 5. Registrar um novo documento para `ventoinha` e repetir a consulta
 
-Na aba "Documentos", fazer upload de um PDF de procedimento para a família `ventoinha`
-(`POST /documentos`) e voltar à aba "Diagnóstico & Chat" para repetir a consulta da família
-`ventoinha`. Mostrar que a resposta muda imediatamente de `sem_documento` para
-`diagnostico` — sem reiniciar a API, sem novo deploy. Isso demonstra RF5 (registro de novos
-documentos com efeito imediato) e reforça que o guardrail é dinâmico: a fronteira entre
-"documentado" e "não documentado" é dados (`DocumentRegistry` + índice FAISS em memória),
-não uma lista fixa em código.
+Passo oficial: `demo/procedimento_ventoinha_demo.md` (documento curto — sintomas,
+diagnóstico, correção — pronto em `demo/`).
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/documentos -Form @{
+  file   = Get-Item "demo/procedimento_ventoinha_demo.md"
+  family = "ventoinha"
+  title  = "Procedimento Ventoinha Demo"
+}
+```
+
+`-Form` exige PowerShell 6.1+ (não funciona no Windows PowerShell 5.1 do `powershell.exe`
+padrão) — alternativa com o `curl.exe` nativo do Windows (não o alias do PowerShell para
+`Invoke-WebRequest`, o binário real em `System32`):
+
+```powershell
+curl.exe -X POST http://localhost:8000/documentos `
+  -F "file=@demo/procedimento_ventoinha_demo.md" `
+  -F "family=ventoinha" `
+  -F "title=Procedimento Ventoinha Demo"
+```
+
+Repetir a consulta de `demo/evento_ventoinha.json`: a resposta muda imediatamente de
+`sem_documento` para `diagnostico` — sem reiniciar a API, sem novo deploy. Isso demonstra
+RF5 (registro de novos documentos com efeito imediato) e reforça que o guardrail é dinâmico:
+a fronteira entre "documentado" e "não documentado" é dados (`DocumentRegistry` + índice
+FAISS em memória), não uma lista fixa em código.
+
+**Prova de persistência (reinício não apaga o cadastro)**: o upload grava o arquivo em
+`uploads_dir` (volume `uploads` do compose) e registra o caminho no Postgres — os dois
+sobrevivem a um restart do container da API, só o índice FAISS em memória é reconstruído no
+bootstrap seguinte (reindexando os documentos cadastrados, ver `scripts/bootstrap.py:
+ingest_registry_documents`).
+
+```powershell
+docker compose restart api
+# aguardar o healthcheck voltar a "healthy" (docker compose ps)
+$body = Get-Content -Raw demo/evento_ventoinha.json
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/eventos `
+  -ContentType "application/json" -Body $body
+```
+
+Resultado esperado: continua `status: "diagnostico"` com `sources` apontando para o arquivo
+cadastrado no passo anterior — o cadastro não foi perdido no restart, ao contrário do índice
+em memória de uma implementação ingênua sem `DocumentRegistry`.
 
 ### 6. Ligar o modo online e comparar a redação
 
@@ -89,14 +168,23 @@ a interpretação acontece **antes** do RAG e do LLM, em código determinístico
 ~~~text
 1. "O rolamento interno está aquecendo" deve reconhecer rolamento_inner.
 2. "Não é correia, é a polia" deve consultar somente polia.
-3. "A ventoinha está raspando" deve responder que ventoinha é reconhecida, mas não documentada.
+3. "O rotor está excêntrico" deve responder que eccentric_rotor é reconhecida, mas não
+   documentada.
 ~~~
 
 O caso 1 mostra que o vocabulário do operador ("rolamento interno", "pista interna", "inner
 bearing") mapeia para a família técnica sem que ele precise saber o identificador interno. O
 caso 2 mostra que a negação é respeitada — `correia` não chega a ser consultada no índice. O
-caso 3 é a mesma contenção do passo 4, agora pelo caminho do chat: família **reconhecida**,
-documento **ausente**, LLM **não chamado**.
+caso 3 é a mesma classe de contenção do passo 4, agora pelo caminho do chat: família
+**reconhecida**, documento **ausente**, LLM **não chamado**.
+
+**Nota de dependência de ordem.** O caso 3 usa deliberadamente `eccentric_rotor`, não
+`ventoinha` (a família do passo 4): `eccentric_rotor` nunca ganha documento em nenhum ponto
+deste roteiro — é a decisão permanente registrada na seção 5 do `README.md` ("Doc5.pdf" cobre
+excentricidade de polia, não rotor excêntrico) —, então este passo funciona em qualquer ordem,
+inclusive depois do passo 5. Repetir o exemplo com `ventoinha` aqui quebraria o roteiro se
+executado depois do passo 5 (o documento já estaria cadastrado e a resposta viria
+`diagnostico`, não a contenção que este passo quer demonstrar).
 
 Vale contrastar com o passo 4: lá o gatilho é um evento de sensor e a família vem do voto kNN;
 aqui o gatilho é texto livre e a família vem do catálogo de sinônimos. São duas portas de
@@ -158,6 +246,52 @@ liberação para executar com a máquina em funcionamento.
 - Rodar `alembic history` (ou `docker exec` no container da API) para mostrar o schema do
   Postgres versionado por migration, não criado ad-hoc.
 
+## Se algo falhar durante a demonstração
+
+| Sintoma | O que fazer | Observação |
+|---|---|---|
+| Ollama cai/morre no meio da entrevista (`renderer` some do ar) | Repetir a consulta e mostrar `"degraded": true`, `"renderer": "template"` na resposta — **narrar isso como feature**, não pedir desculpa: a API continua respondendo 200 com evidência crua em vez de travar ou devolver 500. `tests/test_degradacao_ponta.py` prova esse caminho de ponta a ponta (Router real + `OllamaRenderer` real apontando para porta morta) | Ver seção 6 do roteiro (comparação de modos) e o teste de regressão citado |
+| Sem internet na sala da entrevista | Não é um problema: `LLM_MODE=offline` é o padrão do sistema (`.env.example`), todo o caminho principal (RAG + Ollama local + guardrail) roda sem rede. Só o passo 6 (modo online/OpenAI) fica indisponível — pular ou narrar apenas a degradação silenciosa para Ollama | Seção 6.3 do `README.md` documenta a variável |
+| `postgres` não fica `healthy` / API não inicializa | `docker compose logs postgres` (erro de inicialização, porta 5432 já em uso no host, volume corrompido) — reiniciar com `docker compose down` seguido de `docker compose up --build`; se a porta estiver ocupada, trocar o bind em um override local (nunca no `docker-compose.yml` versionado) | Ver seção 6.4 do `README.md` (portas publicadas só em `127.0.0.1`) |
+| `ollama` fica `unhealthy` por mais de alguns minutos | Conferir se o `ollama pull qwen2.5:7b-instruct` do passo 1 realmente rodou (`docker compose ps`, depois `docker exec -it <container> ollama list`) — sem o modelo baixado o healthcheck nunca passa, mas a API continua respondendo com o template (mesmo caso do primeiro sintoma) | Passo 1 deste roteiro |
+| Dashboard trava/demora em uma chamada | `DASHBOARD_TIMEOUT=330` (compose) dá margem para uma geração lenta em CPU; se estourar mesmo assim, repetir a chamada em modo offline com um payload de `demo/` em vez do sorteio aleatório, para eliminar variância de linha | `demo/README.md` |
+| Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (os volumes `pgdata` e `uploads` sobrevivem a um `docker compose down` sem `-v`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 (cadastro do documento) tomaria `409` (família já documentada) | **Reset seletivo pré-entrevista**: `docker compose down` seguido de `docker volume rm <projeto>_pgdata <projeto>_uploads` — conferir os nomes reais com `docker volume ls` (o prefixo é o nome do projeto Compose, por padrão o nome do diretório, ex. `senai-prova-pleno_pgdata`); **não** remover o volume `ollama` (evita repuxar alguns GB do modelo). Subir de novo com `docker compose up --build` e aceitar o reseed do `banner.xlsx` (~2 min) | Passo 5 deste roteiro |
+| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.git/info/exclude`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | Ver a linha "`postgres` não fica `healthy`" desta mesma tabela — o mesmo tipo de override que remapeia a porta do Postgres pode remapear a da API |
+
+## Ensaio real (pendente — Docker indisponível nesta estação)
+
+Todo o roteiro acima foi validado via testes automatizados (`pytest`, ver `tests/`) e por
+inspeção do compose/healthchecks, mas **não** por uma subida real do stack Docker completo —
+esta estação de trabalho não tem Docker instalado. Fica registrado aqui como checklist
+pendente, com os comandos prontos, para rodar antes da entrevista (ou na máquina da
+entrevista, como primeiro passo do ensaio):
+
+- [ ] **Cenário 1 — banco zerado** (mede o pior caso: seed completo do `banner.xlsx` +
+  download do modelo de embeddings):
+  ```powershell
+  docker compose down -v
+  Measure-Command { docker compose up --build -d }
+  docker compose ps
+  docker exec -it senai-prova-pleno-ollama-1 ollama pull qwen2.5:7b-instruct
+  curl http://localhost:8000/health
+  ```
+  Registrar o tempo até `docker compose ps` mostrar `api` e `postgres` `healthy` (esperado
+  próximo dos ~126s de seed do xlsx documentados na seção 6.1 do `README.md`, mais o tempo de
+  download do modelo de embeddings ~1 GB na primeira subida).
+
+- [ ] **Cenário 2 — banco populado** (volume do passo anterior preservado, sem `-v`):
+  ```powershell
+  docker compose up --build -d
+  Measure-Command { docker compose ps }
+  curl http://localhost:8000/health
+  ```
+  Registrar o tempo até `ready: true` — deve ser sensivelmente mais rápido que o cenário 1
+  (sem seed do xlsx nem download do modelo de embeddings, só leitura do Postgres já povoado).
+
+- [ ] Repetir os passos 1-5 deste roteiro (payloads de `demo/`, cadastro ao vivo, restart)
+  contra o stack real e confirmar que os resultados batem com o que este documento descreve.
+- [ ] Anotar os dois tempos medidos (cenário 1 e 2) neste arquivo antes da entrevista.
+
 ## Mapa de critérios de avaliação
 
 A prova define critérios de avaliação para a entrega do projeto, para a entrevista e itens de
@@ -180,11 +314,11 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 
 | Critério | Onde é atendido |
 |---|---|
-| Clareza na comunicação / organização da apresentação | Este roteiro de demonstração (passos 1-7) |
+| Clareza na comunicação / organização da apresentação | Este roteiro de demonstração (passos 1-10) |
 | Justificativa das decisões técnicas adotadas | README, seção 3 ("Decisões técnicas e justificativas") — tabela com escolha e justificativa lado a lado para cada camada |
 | Capacidade de argumentação / domínio dos conceitos utilizados | README, seção 4 (desafios reais dos dados) e seção 5 (guardrail anti-alucinação, incluindo a decisão documentada sobre `eccentric_rotor`) |
 | Justificativa dos resultados obtidos / interpretação dos resultados | README, seção 4(d) — achado de que o voto kNN concorda com a família real em ~46% dos casos, e a decisão de expor `family_votes` em vez de esconder a incerteza |
-| Demonstração com dados de teste | Passos 3-6 deste roteiro — eventos reais do `banner.xlsx` sorteados ao vivo pelo dashboard, não casos fabricados |
+| Demonstração com dados de teste | Passos 3-6 deste roteiro — payloads determinísticos de `demo/` (linhas reais de `banner.xlsx`, ver `demo/README.md`) como caminho oficial, com o sorteio ao vivo pelo dashboard como alternativa; nenhum caso fabricado |
 | Capacidade de extrair insights relevantes | README, seção 4 — os quatro desafios de dados (rótulos sujos, artefatos de datetime, PDF sem texto, sobreposição de famílias) foram descobertos e tratados durante a implementação, não hipotéticos |
 | Alucinação do modelo | README, seção 5 — guardrail com dois pontos de bloqueio estrutural (família sem documento; família documentada sem trecho recuperável), nenhum dos quais depende de instrução de prompt. Passo 4 deste roteiro demonstra ao vivo |
 
