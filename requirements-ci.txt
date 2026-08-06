@@ -5,8 +5,12 @@
 # todos usam um embedder fake determinístico — e app/rag/index.py cai para um
 # fallback em numpy puro quando o pacote faiss não está instalado. Excluir os
 # três evita ~2 GB de download só para rodar a suite. Validado localmente:
-# mesma suite (195 passed + 2 xfailed) roda igual com este subconjunto, ver
+# mesma suite (292 passed + 2 xfailed) roda igual com este subconjunto, ver
 # README ("Como rodar os testes").
+#
+# streamlit e plotly continuam necessários aqui (e não só na imagem do
+# dashboard): tests/test_dashboard*.py exercitam os módulos de gráfico e
+# executam cada página com streamlit.testing.AppTest.
 #
 # pytest entra aqui (em vez de referenciar requirements-dev.txt, que por sua
 # vez referencia requirements.txt completo) para o CI não reintroduzir os
