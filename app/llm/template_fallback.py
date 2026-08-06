@@ -10,7 +10,11 @@ from app.llm.grounding import evidence_items_for
 from app.rag.chunking import Chunk
 from app.rag.search import EvidenceItem
 
-_PAGE_MARKER = re.compile(r"(?:^|\s+)p[aá]gina\s+\d+\s*$", re.IGNORECASE)
+_PAGE_MARKER_LINE = re.compile(r"\s*p[aá]gina\s+\d+\s*", re.IGNORECASE)
+_TRAILING_PAGE_FOOTER = re.compile(
+    r"(?<=[.!?])\s+p[aá]gina\s+\d+\s*$",
+    re.IGNORECASE,
+)
 _PDF_BULLET = re.compile(r"\s*[•●▪]\s*")
 
 _ROLE_TITLES = {
@@ -37,9 +41,14 @@ def _clean_chunk_text(chunk: Chunk) -> str:
     lines = chunk.text.splitlines()
     while lines and _is_chunk_heading(lines[0], chunk):
         lines.pop(0)
+    lines = [
+        line
+        for line in lines
+        if _PAGE_MARKER_LINE.fullmatch(line) is None
+    ]
 
     text = "\n".join(lines).strip()
-    text = _PAGE_MARKER.sub("", text).rstrip()
+    text = _TRAILING_PAGE_FOOTER.sub("", text).rstrip()
     bullet_parts = _PDF_BULLET.split(text)
     if len(bullet_parts) == 1:
         return text

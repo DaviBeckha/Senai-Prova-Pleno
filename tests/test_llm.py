@@ -151,6 +151,83 @@ def test_template_preserva_conteudo_geral_em_secao_previsivel():
     assert "Orientar a inspeção da ventoinha." in out
 
 
+def test_template_preserva_referencia_legitima_a_pagina():
+    chunk = Chunk(
+        doc_family="ventoinha",
+        source="ventoinha.pdf",
+        section="4. Inspeção",
+        text="4. Inspeção\nConsulte a Página 2",
+        section_path=("4. Inspeção",),
+        content_role=ContentRole.INSPECTION,
+    )
+    item = EvidenceItem("ventoinha:E1", "ventoinha", chunk, 0.9)
+    context = replace(
+        _ventoinha_ctx(),
+        retrieval=RetrievalBundle((
+            FamilyEvidence("ventoinha", (item,), False),
+        )),
+    )
+
+    out = TemplateRenderer().render(context)
+
+    assert "Consulte a Página 2" in out
+
+
+def test_template_remove_marcador_de_pagina_em_linha_isolada():
+    chunk = Chunk(
+        doc_family="ventoinha",
+        source="ventoinha.pdf",
+        section="4. Inspeção",
+        text=(
+            "4. Inspeção\nInspecionar as pás.\nPágina 2\n"
+            "Verificar a fixação."
+        ),
+        section_path=("4. Inspeção",),
+        content_role=ContentRole.INSPECTION,
+    )
+    item = EvidenceItem("ventoinha:E1", "ventoinha", chunk, 0.9)
+    context = replace(
+        _ventoinha_ctx(),
+        retrieval=RetrievalBundle((
+            FamilyEvidence("ventoinha", (item,), False),
+        )),
+    )
+
+    out = TemplateRenderer().render(context)
+
+    assert "Página 2" not in out
+    assert "Inspecionar as pás." in out
+    assert "Verificar a fixação." in out
+
+
+def test_template_separa_duas_familias_sem_misturar_evidencias():
+    ventoinha = _ventoinha_ctx().retrieval.families[0]
+    chunk = Chunk(
+        doc_family="polia",
+        source="polia.pdf",
+        section="6. Alinhamento",
+        text="6. Alinhamento\nCorrigir a posição da polia.",
+        section_path=("6. Alinhamento",),
+        content_role=ContentRole.ALIGNMENT,
+    )
+    polia = FamilyEvidence(
+        "polia",
+        (EvidenceItem("polia:E1", "polia", chunk, 0.9),),
+        False,
+    )
+    context = replace(
+        _ventoinha_ctx(),
+        families=("ventoinha", "polia"),
+        retrieval=RetrievalBundle((ventoinha, polia)),
+    )
+
+    out = TemplateRenderer().render(context)
+
+    assert out.count("### Orientação encontrada para") == 2
+    assert out.index("Ventoinha") < out.index("Polia")
+    assert "Corrigir a posição da polia." in out
+
+
 def test_router_degrades_to_fallback():
     outcome = Router(primary=BoomRenderer(), fallback=TemplateRenderer()).render(_ctx())
     assert outcome.degraded is True

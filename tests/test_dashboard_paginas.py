@@ -354,7 +354,8 @@ def test_pagina_diagnostico_mostra_fontes_e_redator():
     prova.button[0].click().run()
 
     texto = _textos(prova)
-    assert "Doc4.pdf" in texto
+    assert "Doc4.pdf" not in texto
+    assert "1 evidência documental" in texto
     assert "determinística" in texto
 
 
@@ -446,11 +447,76 @@ def test_pagina_chat_coloca_evidencia_bruta_em_expansor():
         expander.label == "Ver evidências e fontes (1)"
         for expander in prova.expander
     )
-    assert any("Doc4.pdf" in caption.value for caption in prova.caption)
+    assert any("Doc4.pdf" in texto.value for texto in prova.text)
     assert any(
         "Ajustar a tensão da correia." in bloco.value
         for bloco in prova.code
     )
+
+
+def test_pagina_chat_ignora_evidencias_malformadas_sem_quebrar(monkeypatch):
+    import api
+
+    resposta = {
+        **CHAT_RESPONDIDO,
+        "evidencias": [
+            None,
+            "invalida",
+            {},
+            {"id": "sem outros campos"},
+            CHAT_RESPONDIDO["evidencias"][0],
+        ],
+    }
+    monkeypatch.setattr(api, "perguntar", lambda pergunta, modo: resposta)
+
+    prova = _rodar("chat.py")
+    prova.chat_input[0].set_value("como corrigir correia?").run()
+
+    assert not prova.exception, [str(erro) for erro in prova.exception]
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
+
+
+def test_pagina_diagnostico_ignora_payload_de_evidencias_invalido(monkeypatch):
+    import api
+
+    resposta = {**DIAGNOSTICO_EMPATE, "evidencias": None}
+    monkeypatch.setattr(api, "diagnosticar", lambda features, modo: resposta)
+
+    prova = _rodar("diagnostico.py")
+    prova.button[0].click().run()
+
+    assert not prova.exception, [str(erro) for erro in prova.exception]
+    assert not [
+        expander
+        for expander in prova.expander
+        if expander.label.startswith("Ver evidências e fontes")
+    ]
+    assert "expansor" not in "\n".join(
+        warning.value.lower() for warning in prova.warning
+    )
+
+
+def test_pagina_chat_esconde_fonte_tecnica_do_fallback(monkeypatch):
+    import api
+
+    resposta = {
+        **CHAT_RESPONDIDO,
+        "resposta": "### Orientação encontrada para Correia",
+        "redator": "template",
+        "degradado": True,
+        "erros_de_validacao": ["geração rejeitada"],
+    }
+    monkeypatch.setattr(api, "perguntar", lambda pergunta, modo: resposta)
+
+    prova = _rodar("chat.py")
+    prova.chat_input[0].set_value("como corrigir correia?").run()
+
+    assert "Doc4.pdf" not in _textos(prova)
+    assert "1 evidência documental" in _textos(prova)
+    assert any("Doc4.pdf" in texto.value for texto in prova.text)
 
 
 # --- Documentos ------------------------------------------------------------
