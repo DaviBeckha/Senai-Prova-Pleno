@@ -57,7 +57,7 @@ flowchart TD
     M -->|"exceção"| N
     L --> O
     M --> O
-    N --> O["Resposta final: defeito, ocorrências,<br/>frequência, instruções, fontes, family_votes"]
+    N --> O["Resposta final: defeito, ocorrências,<br/>frequência, instruções, fontes, votos_por_familia"]
     F --> O
     G --> O
 ```
@@ -84,13 +84,13 @@ Contratos entre camadas (independência deliberada):
 | Linguagem | Python | Restrição obrigatória do enunciado |
 | Framework web | FastAPI + Pydantic | Diferencial "APIs" citado na prova; validação de schema nativa; Swagger (`/docs`) gerado automaticamente, útil na demo |
 | Similaridade de eventos | kNN (scikit-learn, `k=50`) sobre features escaladas (`StandardScaler` + `SimpleImputer`), sem classificação prévia | O enunciado pede explicitamente que a solução "não dependa da classificação prévia de falhas conhecidas", e sim de busca por padrões similares no histórico — kNN atende isso de forma simples, determinística e auditável |
-| Transparência da decisão | Campo `family_votes` exposto em toda resposta de `/eventos` | Ver seção 4(d): a votação k=50 não é unânime: em vez de esconder a incerteza atrás de um único rótulo, a distribuição completa de votos é devolvida ao cliente |
+| Transparência da decisão | Campo `votos_por_familia` exposto em toda resposta de `/eventos` | Ver seção 4(d): a votação k=50 não é unânime: em vez de esconder a incerteza atrás de um único rótulo, a distribuição completa de votos é devolvida ao cliente |
 | Banco de dados | PostgreSQL 16 + SQLAlchemy 2.0 + Alembic (migrations versionadas em `migrations/`) | Diferencial "Bancos de Dados"; schema versionado por migration reforça também o critério "Versionamento" |
 | RAG | PDFs → chunking por seção numerada → embeddings `intfloat/multilingual-e5-base` (local, 768 dimensões) → índice FAISS por família | Modelo multilíngue (documentos em pt-BR), roda 100% offline, respeita a restrição de hardware |
 | LLM — modo offline (padrão) | Ollama + `qwen2.5:7b-instruct` | Quantizado, usa ~5-6 GB de VRAM — cabe folgado nos 16 GB de GPU exigidos pela estação de trabalho da prova; funciona sem internet, coerente com um ambiente de chão de fábrica |
 | LLM — modo online (opcional) | OpenAI `gpt-5.6-luna` via Responses API | Redação de melhor qualidade quando há conectividade; custo por resposta desprezível; **selecionável por requisição** (campo `modo`), não fixo por processo |
 | Fallback | Template determinístico (`TemplateRenderer`, sem LLM) | O sistema nunca fica sem resposta: cobre indisponibilidade do Ollama local ou falha/ausência de chave da OpenAI. Toda resposta degradada é sinalizada com `degraded: true` |
-| Dashboard | Streamlit multipage (3 abas) | Diferencial "Dashboards"; ferramenta explicitamente aceita pelo enunciado da prova; rápido de construir sem sacrificar interatividade |
+| Dashboard | Streamlit multipage (`st.navigation`, 4 páginas com URL própria) | Diferencial "Dashboards"; ferramenta explicitamente aceita pelo enunciado da prova; rápido de construir sem sacrificar interatividade. Cliente puro da API: não importa `app/` nem lê o dataset do disco |
 | Deploy | Docker + docker-compose (`ollama`, `api`, `dashboard`) conectado ao PostgreSQL da máquina host | Diferencial "Soluções de Deploy"; containeriza a aplicação sem duplicar o banco local |
 | Integração industrial | Script simulador de eventos (`scripts/simulator.py`) publicando no `/eventos` em intervalo configurável | Diferencial "Integrações em ambiente industrial" com custo de implementação mínimo — simula um gateway industrial publicando leituras de sensor |
 
@@ -183,7 +183,7 @@ falhas mecânicas produzem assinaturas de vibração parecidas nesse conjunto de
 
 Em vez de mascarar essa incerteza atrás de um único rótulo `family: str`, o pipeline
 (`app/pipeline.py`) expõe a distribuição completa de votos dos vizinhos em todo diagnóstico
-retornado, no campo `family_votes: dict[str, int]` — nunca vazio quando há um evento de
+retornado, no campo `votos_por_familia: dict[str, int]` — nunca vazio quando há um evento de
 sensor associado. O dashboard mostra o top-3 desses votos ao lado da comparação entre
 rótulo real e diagnóstico obtido. Essa é uma escolha deliberada de transparência: a decisão
 final (`family` dominante) continua sendo usada normalmente pelo guardrail e pelo RAG, mas
@@ -243,7 +243,7 @@ Por isso o chat tem **três gates independentes**:
 
 Falha em qualquer gate impede uma resposta prescritiva livre. No terceiro gate o sistema
 devolve somente os trechos recuperados e marca `degraded: true`, registrando o motivo em
-`validation_errors` — o que distingue "modelo fora do ar" de "modelo inventou".
+`erros_de_validacao` — o que distingue "modelo fora do ar" de "modelo inventou".
 
 O redator não devolve mais prosa: devolve um JSON em que cada ação vem amarrada a uma
 evidência e à citação que a sustenta (`app/llm/contracts.py`). O `Router` valida antes de
@@ -265,7 +265,7 @@ formatar (`app/llm/grounding.py::validate_grounded_draft`), conferindo seis cois
 **Um único passo reprovado invalida o rascunho inteiro** — meia resposta fundamentada e meia
 inventada continua sendo uma resposta inventada. Nesse caso o `Router` degrada para o
 `TemplateRenderer` (extrativo, sem síntese) e a resposta de `/chat` sai com `degraded: true` e
-`validation_errors` preenchido — o campo é o que permite distinguir, sem adivinhar pelo texto,
+`erros_de_validacao` preenchido — o campo é o que permite distinguir, sem adivinhar pelo texto,
 "o redator primário não respondeu" (mensagem de infraestrutura, ex. `"timed out"`) de "o
 redator respondeu, mas a resposta foi rejeitada por falta de fundamentação" (um motivo por
 passo, ex. `"passo 1: número sem suporte na citação"`); ver o exemplo `answered` degradado na
@@ -323,7 +323,7 @@ dois problemas como equivalentes só porque compartilham uma palavra no texto se
 exatamente o tipo de fundamentação frágil que o guardrail existe para evitar. `eccentric_rotor`
 portanto dispara a resposta de contenção como as demais famílias sem documento — e, como
 qualquer família nessa situação, um novo documento específico pode ser registrado a
-qualquer momento via `POST /documentos` (ou pela aba "Documentos" do dashboard), com
+qualquer momento via `POST /documentos` (ou pela página "Documentos" do dashboard), com
 efeito imediato: a próxima consulta àquela família já usa o documento recém-indexado, sem
 reiniciar a aplicação.
 
@@ -511,7 +511,7 @@ python -m pytest -q
 
 `requirements-dev.txt` referencia `requirements.txt` inteiro (inclui `sentence-transformers`,
 `torch` e `faiss-cpu`) — é o mesmo ambiente usado para desenvolver. Contagem medida rodando a
-suíte de verdade: **195 testes aprovados + 2 `xfailed`** (os dois `xfail` são as limitações
+suíte de verdade: **291 testes aprovados + 2 `xfailed`** (os dois `xfail` são as limitações
 documentadas do validador de fundamentação, seção 5 — `strict=True`: viram falha de CI se
 alguém "consertar" o comportamento sem atualizar o teste), em cerca de **4 minutos** nesta
 máquina de desenvolvimento (Python 3.14, sem GPU). O pipeline de CI (`.github/workflows/ci.yml`)
@@ -537,11 +537,103 @@ degradação sem exigir infraestrutura.
 Todas as rotas estão documentadas interativamente em `/docs` (Swagger, gerado
 automaticamente pelo FastAPI).
 
+**O contrato HTTP é integralmente em português.** A tradução acontece no limite HTTP, nas
+fábricas `de_relatorio` de `app/api/schemas.py`: os relatórios internos (`DiagnosisReport`,
+`ChatReport`) mantêm nomes em inglês porque seus valores de `status` são identificadores de
+máquina de estado, asseridos em dezenas de pontos da suíte — renomeá-los ali seria mudar
+lógica para arrumar vocabulário. Efeito colateral desejado: os dois endpoints convergiram
+para o mesmo vocabulário, onde antes `/chat` dizia `undocumented` e `state` para as mesmas
+ideias que `/eventos` já chamava de `sem_documento` e `estado`.
+
+Duas exceções declaradas, ambas por serem identidade de dado e não texto de interface:
+
+1. **As 23 features do `POST /eventos`** seguem em inglês (`z_rms_velocity_mm_s`,
+   `temperature_c`, `rpm`…). São os nomes das colunas do `banner.xlsx` e de `sensor_readings`
+   (`FEATURE_COLUMNS` em `app/data/loader.py`, `SensorReading` em `app/data/models.py`);
+   renomeá-las exigiria migration, remapeamento do dataset e invalidaria os fixtures de `demo/`.
+2. **O `ready`/`llm_mode` do `GET /health`**, consumido pelo healthcheck do
+   `docker-compose.yml` — é superfície de operação, não de leitura humana.
+
 ### `GET /health`
 
 ```json
 {"status": "ok", "ready": true, "llm_mode": "offline"}
 ```
+
+### `GET /familias` — vocabulário do domínio
+
+Slug, rótulo em português, tipo e cobertura documental de cada família. O dashboard busca uma
+vez e rotula tudo com isso: eixos dos gráficos, votos do kNN, chips do chat e o seletor do
+formulário de upload. Ter uma rota própria dispensa repetir `rotulo` em cada objeto de cada
+resposta.
+
+```json
+[
+  {"familia": "correia", "rotulo": "Correia", "tipo": "falha", "documentado": true},
+  {"familia": "eccentric_rotor", "rotulo": "Rotor excêntrico", "tipo": "falha", "documentado": false},
+  {"familia": "normal", "rotulo": "Normal", "tipo": "estado", "documentado": false}
+]
+```
+
+Fonte: `FAULT_FAMILIES`/`STATE_FAMILIES` + `DISPLAY_LABELS` (`app/data/labels.py`) +
+`registry.has_document`. Uma leitura do registry para as 17 famílias, não 17 queries.
+
+### `GET /documentos` — o que já está cadastrado
+
+```json
+[
+  {"familia": "correia", "rotulo": "Correia", "titulo": "Doc4 - Correias",
+   "cadastrado_em": "2026-08-06T02:11:00Z"}
+]
+```
+
+Expõe `DocumentRegistry.list_documents()`, que existia sem rota. **Não devolve `source_path`:**
+é caminho de arquivo no disco do servidor (inclusive dentro de `UPLOADS_DIR`) e não tem uso
+legítimo no cliente. Sem esta rota, a página de documentos era cega para escrita — o usuário
+subia um arquivo, recebia `409` e não tinha meio de descobrir o que já existia.
+
+### `GET /historico/resumo` — agregados para os gráficos
+
+```json
+{
+  "total_leituras": 166796,
+  "janela": {"primeira": "2026-05-02", "ultima": "2026-06-30"},
+  "por_familia": [{"familia": "correia", "tipo": "falha", "ocorrencias": 11999}],
+  "por_dia": [{"dia": "2026-05-02", "familia": "correia", "ocorrencias": 118}]
+}
+```
+
+Dois `groupby` sobre o **mesmo** DataFrame que alimenta o kNN. Antes, o dashboard lia
+`banner.xlsx` do próprio disco e reaplicava `normalize_label`: duas fontes de verdade para o
+mesmo dataset, com o risco de o gráfico mostrar um corpus e o motor de similaridade usar outro.
+Devolve apenas slugs — o rótulo vem do cache de `GET /familias`, para não criar uma segunda
+fonte de vocabulário nem inflar as ~1.000 entradas de `por_dia`.
+
+Não há cache no servidor de propósito: o dashboard cacheia a resposta por 5 minutos, e um cache
+aqui só acrescentaria uma invalidação para manter correta.
+
+### `GET /eventos/amostra?familia=<slug>` — sortear uma leitura real
+
+```json
+{
+  "id_externo": 102543,
+  "rotulo_original": "correia_2",
+  "familia": "correia",
+  "features": {"rpm": 1798.0, "temperature_c": 41.2, "…": 0.0},
+  "features_substituidas": ["z_kurtosis"]
+}
+```
+
+O `features` sai pronto para `POST /eventos`, sem ajuste no cliente. `familia` é validada pela
+mesma allowlist `_FAMILY_RE` do `POST /documentos` **e** tem de existir no vocabulário — sem a
+segunda checagem, qualquer string válida viraria um filtro aceito com resultado vazio (`404`
+confuso) em vez de um `422` dizendo que a família não existe. Família válida sem leitura no
+corpus dá `404`.
+
+`features_substituidas` nomeia as colunas cujo valor no histórico não pôde ser convertido para
+número e foram enviadas como `0.0` — o mesmo contrato de `scripts/simulator.py::build_payload`
+(ver seção 4b), mas **visível**: antes esse aviso ia só para o stdout do container, onde ninguém
+o lia.
 
 ### `POST /eventos` — caso 1: falha documentada (diagnóstico completo)
 
@@ -570,29 +662,56 @@ descrita na seção 4(b):
 }
 ```
 
-Resposta (ilustrativa — o texto de `message` varia conforme o redator ativo; `total_ocorrencias`,
-`freq_per_day` e `family_votes` são medidos sobre o histórico e o kNN reais para esta linha):
+Resposta (ilustrativa — o texto de `mensagem` varia conforme o redator ativo; `total_ocorrencias`,
+`frequencia_por_dia` e `votos_por_familia` são medidos sobre o histórico e o kNN reais para esta linha):
 
 ```json
 {
   "status": "diagnostico",
-  "family": "cocked_rotor",
-  "message": "DEFEITO IDENTIFICADO: cocked_rotor\nHISTORICO: 14275 ocorrencias similares (594.79/dia, de 2026-05-18 a 2026-06-11).\nACOES DE CORRECAO (extraidas dos procedimentos):\n- [Doc6.pdf — secao 4. Principais Causas] ...\nFONTE: Doc6.pdf",
+  "familia": "cocked_rotor",
+  "rotulo": "Rotor desalinhado no eixo",
+  "mensagem": "- Verificar o assentamento do rotor no eixo [Doc6.pdf — seção 4. Principais Causas; evidência cocked_rotor:E1].",
   "total_ocorrencias": 14275,
-  "freq_per_day": 594.79,
-  "sources": ["Doc6.pdf"],
-  "renderer": "ollama",
-  "degraded": false,
-  "family_votes": {"cocked_rotor": 16, "rolamento_combination": 8, "normal": 6, "rolamento_ball": 5, "correia": 5, "desalinhado": 4, "rolamento_outer": 4, "rolamento_inner": 2},
-  "neighbor_count": 50
+  "frequencia_por_dia": 594.79,
+  "ocorrencias": {
+    "primeira": "2026-05-18T00:00:00+00:00",
+    "ultima": "2026-06-11T00:00:00+00:00",
+    "por_dia": {"2026-05-18": 512, "2026-05-19": 604}
+  },
+  "fontes": ["Doc6.pdf"],
+  "redator": "ollama",
+  "degradado": false,
+  "erros_de_validacao": [],
+  "votos_por_familia": {"cocked_rotor": 16, "rolamento_combination": 8, "normal": 6, "rolamento_ball": 5, "correia": 5, "desalinhado": 4, "rolamento_outer": 4, "rolamento_inner": 2},
+  "vizinhos_consultados": 50
 }
 ```
+
+Três campos aqui existem porque o contrato antigo descartava informação que o backend já tinha:
+
+- **`rotulo`** é o nome em português da família. O slug (`cocked_rotor`) continua sendo a chave
+  de domínio — aparece em `Document.family`, em `SensorReading.family`, no filtro de seção do
+  RAG e na allowlist do `POST /documentos` —, então a tradução é camada de apresentação
+  (`DISPLAY_LABELS` em `app/data/labels.py`), nunca renomeação.
+- **`ocorrencias`** é a janela histórica que `occurrence_stats` sempre calculou e o contrato
+  jogava fora. Sem ela, `frequencia_por_dia` é ininteligível: `594.79/dia` medido em 25 dias é
+  outra afirmação que o mesmo número medido em 60.
+- **`erros_de_validacao`** é o motivo pelo qual a geração foi rejeitada pela validação de
+  fundamentação. O `/chat` já o propagava; o `diagnose()` descartava, e o campo nem existia no
+  relatório — o motivo só aparecia no log do servidor. Numa avaliação local do modo offline,
+  43,75% das gerações foram rejeitadas e caíram no template extrativo; sem este campo, essas
+  respostas chegam à tela indistinguíveis de uma geração aceita.
+
+**Exceção declarada ao "tudo em português":** o identificador de evidência dentro de `mensagem`
+(`cocked_rotor:E1`) mantém o slug. Não é prosa, e sim chave de citação: o validador de
+fundamentação casa cada passo gerado contra essa chave (`app/llm/grounding.py`), então
+traduzi-la quebraria a validação que impede resposta sem fonte.
 
 **Nota honesta sobre o payload literal do enunciado da prova.** O evento de exemplo do
 enunciado (mesmos 23 campos, mas em escala "limpa": `z_rms_velocity_in_s: 0.0597`,
 `z_kurtosis: 2.392` etc., em vez das dezenas/centenas/milhares acima) **não** reproduz esse
 resultado quando medido contra o pipeline real — ele cai em `status: "estado"`, `family:
-"normal"` (`family_votes`: `normal: 20, rolamento_ball: 6, correia: 5, cocked_rotor: 4, ...`).
+"normal"` (`votos_por_familia`: `normal: 20, rolamento_ball: 6, correia: 5, cocked_rotor: 4, ...`).
 A causa é a mesma sujeira de escala descrita na seção 4 ("Desafios reais dos dados"): o
 `SimilarityEngine` treina o `StandardScaler`/kNN sobre a escala "suja" do `banner.xlsx`
 (valores como `671.0`, não `0.671`), então um payload com decimais pequenos fica fora da
@@ -630,19 +749,26 @@ sem qualquer reescala, com a mesma sujeira de tipo descrita na seção 4(b):
 ```json
 {
   "status": "sem_documento",
-  "family": "ventoinha",
-  "message": "Problema identificado como 'ventoinha', porém ainda não existe documento orientativo cadastrado para ele. Registre um novo documento para habilitar as recomendações.",
+  "familia": "ventoinha",
+  "rotulo": "Ventoinha",
+  "mensagem": "Problema identificado como 'Ventoinha', porém ainda não existe documento orientativo cadastrado para ele. Registre um novo documento para habilitar as recomendações.",
   "total_ocorrencias": 12299,
-  "freq_per_day": 878.5,
-  "sources": [],
-  "renderer": null,
-  "degraded": false,
-  "family_votes": {"ventoinha": 13, "rolamento_combination": 10, "polia": 7, "cocked_rotor": 6, "rolamento_ball": 5, "rolamento_outer": 4, "normal": 2, "eccentric_rotor": 2, "rolamento_inner": 1},
-  "neighbor_count": 50
+  "frequencia_por_dia": 878.5,
+  "ocorrencias": {
+    "primeira": "2026-05-18T00:00:00+00:00",
+    "ultima": "2026-06-01T00:00:00+00:00",
+    "por_dia": {"2026-05-18": 901, "2026-05-19": 874}
+  },
+  "fontes": [],
+  "redator": null,
+  "degradado": false,
+  "erros_de_validacao": [],
+  "votos_por_familia": {"ventoinha": 13, "rolamento_combination": 10, "polia": 7, "cocked_rotor": 6, "rolamento_ball": 5, "rolamento_outer": 4, "normal": 2, "eccentric_rotor": 2, "rolamento_inner": 1},
+  "vizinhos_consultados": 50
 }
 ```
 
-Nesse caso o LLM não é chamado — `renderer` vem `null` e `sources` vem vazio porque não há
+Nesse caso o LLM não é chamado — `redator` vem `null` e `fontes` vem vazio porque não há
 nenhuma fonte a citar.
 
 ### `POST /eventos` — caso 3: estado de operação (`normal`)
@@ -674,35 +800,42 @@ em vez de `0.564`.
 ```json
 {
   "status": "estado",
-  "family": "normal",
-  "message": "Evento classificado como estado de operação 'normal' — nenhuma falha identificada.",
+  "familia": "normal",
+  "rotulo": "Normal",
+  "mensagem": "Evento classificado como estado de operação 'Normal' — nenhuma falha identificada.",
   "total_ocorrencias": 15058,
-  "freq_per_day": 320.38,
-  "sources": [],
-  "renderer": null,
-  "degraded": false,
-  "family_votes": {"normal": 28, "motor_desligado": 16, "rolamento_combination": 2, "baseline": 2, "rolamento_ball": 1, "cocked_rotor": 1},
-  "neighbor_count": 50
+  "frequencia_por_dia": 320.38,
+  "ocorrencias": {
+    "primeira": "2026-05-02T00:00:00+00:00",
+    "ultima": "2026-06-17T00:00:00+00:00",
+    "por_dia": {"2026-05-02": 318, "2026-05-03": 322}
+  },
+  "fontes": [],
+  "redator": null,
+  "degradado": false,
+  "erros_de_validacao": [],
+  "votos_por_familia": {"normal": 28, "motor_desligado": 16, "rolamento_combination": 2, "baseline": 2, "rolamento_ball": 1, "cocked_rotor": 1},
+  "vizinhos_consultados": 50
 }
 ```
 
-**`neighbor_count` × `total_ocorrencias`: duas grandezas diferentes.** O kNN vota entre os
-`neighbor_count` vizinhos mais próximos (`k=50`, clampado ao tamanho do histórico se ele for
+**`vizinhos_consultados` × `total_ocorrencias`: duas grandezas diferentes.** O kNN vota entre os
+`vizinhos_consultados` vizinhos mais próximos (`k=50`, clampado ao tamanho do histórico se ele for
 menor que 50 — nunca aconteceu na prática, o corpus tem 166.796 registros) — é essa votação,
-distribuída em `family_votes`, que decide a família dominante. Uma vez identificada a família,
-as estatísticas de histórico (`total_ocorrencias`, `freq_per_day`, distribuição no tempo)
-cobrem **todos** os registros daquela família no dataset inteiro, não apenas os `neighbor_count`
+distribuída em `votos_por_familia`, que decide a família dominante. Uma vez identificada a família,
+as estatísticas de histórico (`total_ocorrencias`, `frequencia_por_dia`, distribuição no tempo)
+cobrem **todos** os registros daquela família no dataset inteiro, não apenas os `vizinhos_consultados`
 vizinhos consultados — é essa contagem completa que responde à leitura do enunciado da prova
 ("quantidade de eventos similares já registrados"). Nos três exemplos acima os 166.796
-registros do histórico superam folgadamente `k=50`, então `neighbor_count` sai sempre 50; o
+registros do histórico superam folgadamente `k=50`, então `vizinhos_consultados` sai sempre 50; o
 campo existe para o caso geral (`SimilarityEngine.query`, parâmetro `k`) e para deixar explícito
 que uma votação entre 50 vizinhos não é a mesma coisa que "50 ocorrências".
 
 ### `POST /chat`
 
-O contrato de resposta (`ChatOut`) tem oito campos: `status`, `resposta`, `families`,
-`fontes`, `renderer`, `degraded`, `limitations` e `validation_errors` — bem mais que o
-`resposta`/`fontes`/`degraded` das primeiras versões da API. Os dois exemplos abaixo são
+O contrato de resposta (`ChatOut`) tem oito campos: `status`, `resposta`, `familias`,
+`fontes`, `redator`, `degradado`, `limitacoes` e `erros_de_validacao` — bem mais que o
+`resposta`/`fontes`/`degradado` das primeiras versões da API. Os dois exemplos abaixo são
 captura real (`TestClient`, dataset e documentos reais, mesma técnica de
 `tests/test_document_persistence.py`), não texto redigido à mão.
 
@@ -714,23 +847,23 @@ captura real (`TestClient`, dataset e documentos reais, mesma técnica de
 
 ```json
 {
-  "status": "answered",
+  "status": "respondido",
   "resposta": "Não foi possível validar uma resposta gerada. Abaixo estão somente os trechos recuperados:\n- [correia:E1; Doc4.pdf — seção 2. Remover a correia antiga.] 2. Remover a correia antiga.\n- [correia:E2; Doc4.pdf — seção 9. Verificação da Tensão da Correia] 9. Verificação da Tensão da Correia\n- [correia:E3; Doc4.pdf — seção 4. Instalar nova correia.] 4. Instalar nova correia.\n- [correia:E4; Doc4.pdf — seção 5. Verificar estabilidade da correia.] 5. Verificar estabilidade da correia. \nComparar os resultados com os valores anteriores.\nLimitações:\n- Nenhuma evidência de segurança, parada ou bloqueio foi recuperada. Esta resposta não autoriza a execução da intervenção.",
-  "families": ["correia"],
+  "familias": ["correia"],
   "fontes": ["Doc4.pdf"],
-  "renderer": "template",
-  "degraded": true,
-  "limitations": [
+  "redator": "template",
+  "degradado": true,
+  "limitacoes": [
     "Nenhuma evidência de segurança, parada ou bloqueio foi recuperada. Esta resposta não autoriza a execução da intervenção."
   ],
-  "validation_errors": ["timed out"]
+  "erros_de_validacao": ["timed out"]
 }
 ```
 
 **Nota honesta sobre esta captura.** `degraded: true` e `renderer: "template"` não são um caso
 de erro escondido — são o resultado real de rodar `/chat` **nesta estação de desenvolvimento**,
 que não tem Docker/Ollama instalados (ver `docs/arquitetura.md`, "Ensaio real"). O `Router`
-tentou o redator primário (`OllamaRenderer`), a conexão falhou (`validation_errors: ["timed
+tentou o redator primário (`OllamaRenderer`), a conexão falhou (`erros_de_validacao: ["timed
 out"]`), e caiu no `TemplateRenderer` — exatamente o caminho provado em
 `tests/test_degradacao_ponta.py`. A resposta ainda é útil e honesta: cita os quatro trechos
 reais de `Doc4.pdf` recuperados pelo RAG, com evidência identificada (`correia:E1`..`E4`), e
@@ -748,14 +881,14 @@ respondendo dentro do prazo.
 
 ```json
 {
-  "status": "undocumented",
+  "status": "sem_documento",
   "resposta": "Reconheci o problema como falta fase, mas ainda não existe documento orientativo cadastrado para essa manutenção.",
-  "families": ["falta_fase"],
+  "familias": ["falta_fase"],
   "fontes": [],
-  "renderer": null,
-  "degraded": false,
-  "limitations": [],
-  "validation_errors": []
+  "redator": null,
+  "degradado": false,
+  "limitacoes": [],
+  "erros_de_validacao": []
 }
 ```
 
@@ -828,12 +961,12 @@ POST /documentos
 Content-Type: multipart/form-data
 
 file=@doc_ventoinha.pdf
-family=ventoinha
-title=Doc7 - Ventoinhas
+familia=ventoinha
+titulo=Doc7 - Ventoinhas
 ```
 
 ```json
-{"chunks": 18}
+{"trechos_indexados": 18}
 ```
 
 A partir dessa chamada, `state.registry.register("ventoinha", ...)` passa a responder
@@ -846,8 +979,9 @@ A partir dessa chamada, `state.registry.register("ventoinha", ...)` passa a resp
 ```
 app/
 ├── api/
-│   ├── main.py            # create_app(): rotas /health, /eventos, /chat, /documentos
-│   ├── schemas.py           # EventIn, DiagnosisOut, ChatIn, ChatOut (Pydantic)
+│   ├── main.py            # create_app(): /health, /familias, /eventos(+/amostra), /chat,
+│   │                      #   /documentos (GET e POST), /historico/resumo
+│   ├── schemas.py           # EventIn, DiagnosticoOut, ChatIn, ChatOut (Pydantic)
 │   └── state.py               # AppState: pipeline, registry, index, df, session_factory
 ├── core/
 │   └── config.py                # Settings (pydantic-settings) via .env
@@ -860,6 +994,7 @@ app/
 │   └── types.py                               # ChatIntent, QueryScope, ChatReport
 ├── data/
 │   ├── labels.py            # normalize_label(): 151 rótulos brutos -> 17 famílias canônicas
+│   │                        #   + DISPLAY_LABELS: slug -> rótulo em português (apresentação)
 │   ├── loader.py               # load_dataset(): lê banner.xlsx, valida colunas, normaliza fault
 │   ├── dataset_store.py          # ensure_dataset(): seed único de sensor_readings a partir do
 │   │                              # xlsx (se vazia) + load_from_db() em todo boot
@@ -885,7 +1020,7 @@ app/
 │   ├── grounding.py                                             # valida cada ação contra a evidência
 │   │                                                             # citada — ver seção 5
 │   ├── router.py                                                  # Router: primário + fallback com
-│   │                                                                # degradação e validation_errors
+│   │                                                                # degradação e erros_de_validacao
 │   ├── template_fallback.py                                         # TemplateRenderer: fallback sem LLM
 │   ├── ollama_adapter.py                                               # OllamaRenderer (modo offline)
 │   └── openai_adapter.py                                                 # OpenAIRenderer (modo online)
@@ -895,8 +1030,19 @@ app/
 │   └── safety.py                   # recusa intervenção com a máquina em funcionamento
 └── pipeline.py                       # PrescriptivePipeline: orquestra tudo acima
 
-dashboard/
-└── app.py            # Streamlit: Histórico (gráficos), Diagnóstico & Chat, Documentos
+dashboard/                 # cliente puro da API: sem import de app/, sem leitura de disco
+├── app.py                   # st.navigation + sidebar global (saúde, modo do LLM, cobertura)
+├── api.py                     # httpx num lugar só; ApiIndisponivel/ApiExpirou/ApiRecusou
+├── vocabulario.py               # rótulo de família (via /familias) e tradução de status
+├── confianca.py                   # empate ou suporte < 40% no voto kNN = inconclusivo
+├── graficos.py                      # figuras Plotly em PT; paleta validada p/ daltonismo
+├── formato.py                         # números e datas pt-BR (11.999 / 1.499,88 / 01/06)
+├── estado.py                            # chaves de session_state e leituras cacheadas
+└── paginas/
+    ├── historico.py                       # KPIs + ocorrências por família + série temporal
+    ├── diagnostico.py                       # sorteia evento real, mostra confiança do voto
+    ├── chat.py                                # conversa com histórico persistente
+    └── documentos.py                            # cobertura documental + cadastro
 
 scripts/
 ├── bootstrap.py       # build_state(): monta pipeline completo a partir de Settings

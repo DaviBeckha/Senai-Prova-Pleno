@@ -20,8 +20,16 @@ _DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard"
 # As paginas usam import plano (`import api`), porque sob `streamlit run` o
 # diretorio do script principal e a raiz de import. Reproduzir isso aqui e o que
 # permite executa-las fora do Streamlit.
+#
+# APPEND, nunca insert(0): dashboard/app.py sombrearia o pacote app/ se viesse
+# antes da raiz do projeto no sys.path — `import app` acharia o script do
+# Streamlit, um modulo, e `from app.api import ...` falharia com "'app' is not a
+# package". E a mesma armadilha que o dashboard antigo contornava com um
+# sys.path.insert proprio. No fim da lista, a raiz do projeto (inserida pelo
+# pytest) ganha para `app`, e `dashboard/` continua sendo o unico a prover
+# `api`, `estado`, `graficos` e companhia.
 if str(_DASHBOARD) not in sys.path:
-    sys.path.insert(0, str(_DASHBOARD))
+    sys.path.append(str(_DASHBOARD))
 
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
 
@@ -160,6 +168,23 @@ def _rodar_app() -> "AppTest":
     prova.run()
     assert not prova.exception, [str(e) for e in prova.exception]
     return prova
+
+
+def test_dashboard_no_sys_path_nao_sombreia_o_pacote_app():
+    # Regressao: com dashboard/ ANTES da raiz do projeto no sys.path, `import app`
+    # resolve para dashboard/app.py — um modulo, nao o pacote — e todo
+    # `from app.api import ...` da suite quebra com "'app' is not a package".
+    # Verificado: nessa ordem, importar `app` chega a EXECUTAR o script do
+    # Streamlit. Passa hoje so por acidente da ordem alfabetica de coleta do
+    # pytest, entao a garantia precisa ser explicita.
+    import app
+
+    assert hasattr(app, "__path__"), (
+        "o pacote app/ foi sombreado por dashboard/app.py — use sys.path.append"
+    )
+    from app.api import schemas
+
+    assert schemas.DiagnosticoOut
 
 
 def test_app_monta_navegacao_e_sidebar_sem_excecao():

@@ -164,5 +164,5 @@ def registrar_documento(familia: str, titulo: str, nome_arquivo: str,
     return _requisitar(
         "POST", "/documentos",
         files={"file": (nome_arquivo, conteudo, tipo_mime)},
-        data={"family": familia, "title": titulo},
+        data={"familia": familia, "titulo": titulo},
     )

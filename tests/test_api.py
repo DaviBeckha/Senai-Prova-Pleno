@@ -372,7 +372,7 @@ def test_documentos_extensao_nao_suportada():
         files={"file": ("documento.docx", b"conteudo fake",
                         "application/vnd.openxmlformats-officedocument"
                         ".wordprocessingml.document")},
-        data={"family": "ventoinha", "title": "Doc Fake"},
+        data={"familia": "ventoinha", "titulo": "Doc Fake"},
     )
     assert r.status_code == 422
     assert "extensão não suportada" in r.json()["detail"]
@@ -431,7 +431,7 @@ def test_documentos_salva_arquivo_persistente(tmp_path, monkeypatch):
         r = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r.status_code == 200
 
@@ -455,7 +455,7 @@ def test_documentos_arquivo_excede_10mb():
     r = client.post(
         "/documentos",
         files={"file": ("grande.md", conteudo_grande, "text/markdown")},
-        data={"family": "correia", "title": "Doc Grande"},
+        data={"familia": "correia", "titulo": "Doc Grande"},
     )
     assert r.status_code == 422
     assert "10 MB" in r.json()["detail"]
@@ -477,7 +477,7 @@ def test_documentos_ingestao_falha_remove_arquivo_orfao(tmp_path, monkeypatch):
             client.post(
                 "/documentos",
                 files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
-                data={"family": "correia", "title": "Doc X"},
+                data={"familia": "correia", "titulo": "Doc X"},
             )
         assert list(tmp_path.iterdir()) == []
     finally:
@@ -496,7 +496,7 @@ def test_documentos_family_com_path_traversal_e_rejeitada(tmp_path, monkeypatch)
         r = client.post(
             "/documentos",
             files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
-            data={"family": "../../../evil_escape_poc", "title": "Doc Malicioso"},
+            data={"familia": "../../../evil_escape_poc", "titulo": "Doc Malicioso"},
         )
         assert r.status_code == 422
         assert "família inválida" in r.json()["detail"]
@@ -516,7 +516,7 @@ def test_documentos_family_snake_case_valida_continua_aceita(tmp_path, monkeypat
         r = client.post(
             "/documentos",
             files={"file": ("Doc Rolamento.md", content, "text/markdown")},
-            data={"family": "rolamento_outer", "title": "Doc Rolamento"},
+            data={"familia": "rolamento_outer", "titulo": "Doc Rolamento"},
         )
         assert r.status_code == 200
         assert registry.registered[0][0] == "rolamento_outer"
@@ -539,7 +539,7 @@ def test_documentos_defesa_em_profundidade_bloqueia_escape_do_uploads_dir(tmp_pa
         r = client.post(
             "/documentos",
             files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
-            data={"family": "correia", "title": "Doc X"},
+            data={"familia": "correia", "titulo": "Doc X"},
         )
         assert r.status_code == 422
         assert registry.registered == []
@@ -557,7 +557,7 @@ def test_documentos_filename_sem_extensao_retorna_422():
         "/documentos",
         files={"file": ("documento_sem_extensao", b"conteudo qualquer",
                         "application/octet-stream")},
-        data={"family": "correia", "title": "Doc Sem Extensao"},
+        data={"familia": "correia", "titulo": "Doc Sem Extensao"},
     )
     assert r.status_code == 422
     assert "extensão não suportada" in r.json()["detail"]
@@ -591,7 +591,7 @@ def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
 
@@ -599,7 +599,7 @@ def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
         assert "documento já cadastrado" in r2.json()["detail"]
@@ -617,7 +617,7 @@ def test_documentos_dedup_arquivo_nao_grava_quando_409(tmp_path, monkeypatch):
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
         files_after_first = list(tmp_path.iterdir())
@@ -628,7 +628,7 @@ def test_documentos_dedup_arquivo_nao_grava_quando_409(tmp_path, monkeypatch):
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
 
@@ -650,7 +650,7 @@ def test_documentos_dedup_chunks_nao_crescem_apos_409(tmp_path, monkeypatch):
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
         chunks_after_first = len(index.chunks_for_family("correia"))
@@ -660,7 +660,7 @@ def test_documentos_dedup_chunks_nao_crescem_apos_409(tmp_path, monkeypatch):
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
 
@@ -681,7 +681,7 @@ def test_documentos_dedup_titulo_normalizado_com_espacos(tmp_path, monkeypatch):
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": " Doc Teste "},
+            data={"familia": "correia", "titulo": " Doc Teste "},
         )
         assert r1.status_code == 200
 
@@ -689,7 +689,7 @@ def test_documentos_dedup_titulo_normalizado_com_espacos(tmp_path, monkeypatch):
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
     finally:
@@ -706,7 +706,7 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
 
@@ -714,7 +714,7 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "doc teste"},
+            data={"familia": "correia", "titulo": "doc teste"},
         )
         assert r2.status_code == 409
     finally:
@@ -754,7 +754,7 @@ def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch)
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Race"},
+            data={"familia": "correia", "titulo": "Doc Race"},
         )
         assert r1.status_code == 200
         assert len(list(tmp_path.iterdir())) == 1
@@ -762,7 +762,7 @@ def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch)
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Race"},
+            data={"familia": "correia", "titulo": "Doc Race"},
         )
         assert r2.status_code == 409
         assert "documento já cadastrado" in r2.json()["detail"]
@@ -775,7 +775,7 @@ def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch)
 
 def test_documentos_arquivo_vazio_retorna_422_e_nao_registra(tmp_path, monkeypatch):
     # Antes desta correcao: .md vazio ingeria 0 chunks e AINDA ASSIM
-    # registrava a familia como "documentada" (200 {"chunks": 0}) — todo
+    # registrava a familia como "documentada" (200 {"trechos_indexados": 0}) — todo
     # diagnostico subsequente da familia caia em contencao "sem trechos" e a
     # retentativa com o mesmo titulo tomava 409 em vez de poder corrigir o
     # upload. Documento sem conteudo utilizavel tem que ser rejeitado (422),
@@ -785,7 +785,7 @@ def test_documentos_arquivo_vazio_retorna_422_e_nao_registra(tmp_path, monkeypat
         r = client.post(
             "/documentos",
             files={"file": ("vazio.md", b"", "text/markdown")},
-            data={"family": "correia", "title": "Doc Vazio"},
+            data={"familia": "correia", "titulo": "Doc Vazio"},
         )
         assert r.status_code == 422
         assert "sem conteúdo utilizável" in r.json()["detail"]
@@ -805,7 +805,7 @@ def test_documentos_arquivo_so_whitespace_retorna_422_e_nao_registra(tmp_path, m
         r = client.post(
             "/documentos",
             files={"file": ("so_espacos.txt", b"\n\n   \n\t\n", "text/plain")},
-            data={"family": "correia", "title": "Doc So Espacos"},
+            data={"familia": "correia", "titulo": "Doc So Espacos"},
         )
         assert r.status_code == 422
         assert "sem conteúdo utilizável" in r.json()["detail"]
@@ -826,7 +826,7 @@ def test_documentos_encoding_invalido_retorna_422_mensagem_propria(tmp_path, mon
         r = client.post(
             "/documentos",
             files={"file": ("latin1.md", b"\xe9\xe1", "text/markdown")},
-            data={"family": "correia", "title": "Doc Latin1"},
+            data={"familia": "correia", "titulo": "Doc Latin1"},
         )
         assert r.status_code == 422
         assert "não está em UTF-8" in r.json()["detail"]

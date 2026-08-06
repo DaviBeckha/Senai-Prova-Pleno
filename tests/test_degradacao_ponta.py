@@ -9,12 +9,11 @@ a demo sobrevive de fato se o processo do Ollama morrer no meio da
 entrevista, nao so que a classe Router sabe degradar em isolamento.
 
 Contrato conferido em app/api/schemas.py antes de escrever este teste:
-`DiagnosisOut` (response_model de `POST /eventos` em app/api/main.py) JA expõe
-`degraded: bool` e `renderer: str | None` — nao ha lacuna de contrato aqui.
+`DiagnosticoOut` (response_model de `POST /eventos` em app/api/main.py) expõe
+`degradado: bool` e `redator: str | None` — nao ha lacuna de contrato aqui.
 `ChatOut` (mesmo arquivo, response_model de `POST /chat`) tambem expõe os
-dois campos, alem de `status`, `families`, `limitations` e
-`validation_errors` do `ChatReport` interno — fora do escopo deste teste,
-que cobre so `/eventos`.
+dois campos, alem de `status`, `familias`, `limitacoes` e
+`erros_de_validacao` — fora do escopo deste teste, que cobre so `/eventos`.
 """
 
 import json

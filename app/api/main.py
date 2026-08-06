@@ -241,13 +241,18 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
             features_substituidas=substituidas,
         )
 
-    @app.post("/documentos")
-    async def documentos(file: UploadFile, family: str = Form(...),
-                         title: str = Form(...),
-                         state: AppState = Depends(get_state)) -> dict:
+    @app.post("/documentos", response_model=DocumentoRegistradoOut)
+    async def documentos(file: UploadFile, familia: str = Form(...),
+                         titulo: str = Form(...),
+                         state: AppState = Depends(get_state)
+                         ) -> DocumentoRegistradoOut:
         from app.rag.ingest import ingest_pdf
 
-        family = family.strip().casefold()
+        # Nomes internos em ingles a partir daqui: e o vocabulario do registry,
+        # do modelo Document e do filtro do RAG. O contrato HTTP fala portugues,
+        # o nucleo continua com os identificadores que persiste.
+        family = familia.strip().casefold()
+        title = titulo
         if not _FAMILY_RE.match(family):
             raise HTTPException(422, "família inválida (use letras minúsculas, números e _)")
 
@@ -318,7 +323,7 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
             dest.unlink(missing_ok=True)
             raise
 
-        return {"chunks": n}
+        return DocumentoRegistradoOut(trechos_indexados=n)
 
     return app
 

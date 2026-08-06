@@ -29,8 +29,10 @@ from app.data.loader import FEATURE_COLUMNS
 from app.pipeline import DiagnosisReport
 
 _DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard"
+# APPEND, nunca insert(0) — ver a nota em tests/test_dashboard_paginas.py:
+# dashboard/app.py sombrearia o pacote app/ se viesse antes da raiz do projeto.
 if str(_DASHBOARD) not in sys.path:
-    sys.path.insert(0, str(_DASHBOARD))
+    sys.path.append(str(_DASHBOARD))
 
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
 
