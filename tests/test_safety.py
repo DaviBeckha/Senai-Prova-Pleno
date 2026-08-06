@@ -100,6 +100,16 @@ def test_variacoes_de_mexer_com_maquina_ligada_geram_orientacao(question):
             "Estou medindo agora a tensão da correia "
             "com o motor ligado."
         ),
+        "A correia está sendo tensionada com o motor ligado.",
+        "A correia será calibrada com o motor ligado.",
+        "A ferramenta foi encostada na correia com o motor ligado.",
+        "A tensão da correia foi medida com o motor ligado.",
+        "A manutenção da correia foi feita com o motor ligado.",
+        "A correia está correta, mas quero limpar com o motor ligado.",
+        (
+            "Eu vou tensionar a correia com o motor ligado; "
+            "ela está correta?"
+        ),
     ),
 )
 def test_novas_intervencoes_com_maquina_ligada_geram_orientacao(question):
@@ -174,6 +184,7 @@ def test_conjugacoes_das_novas_intervencoes_geram_orientacao(question):
         "A correia tensionada está correta com o motor ligado?",
         "A correia calibrada está adequada com o motor ligado?",
         "A correia limpa está adequada com o motor ligado?",
+        "A correia solta está adequada com o motor ligado?",
     ),
 )
 def test_novos_termos_sem_pedido_fisico_nao_acionam_guardrail(question):

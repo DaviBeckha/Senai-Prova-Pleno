@@ -635,6 +635,7 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         "A correia tensionada está correta com o motor ligado?",
         "A correia calibrada está adequada com o motor ligado?",
         "A correia limpa está adequada com o motor ligado?",
+        "A correia solta está adequada com o motor ligado?",
     ),
 )
 def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
@@ -683,6 +684,11 @@ def test_novos_verbos_em_pergunta_conceitual_continuam_explicacao(question):
     (
         "Como ajustar a correia para o valor recomendado com o motor ligado?",
         "Qual o custo para trocar a correia com o motor ligado?",
+        "A correia está correta, mas quero limpar com o motor ligado.",
+        (
+            "Eu vou tensionar a correia com o motor ligado; "
+            "ela está correta?"
+        ),
     ),
 )
 def test_cue_factual_nao_neutraliza_acao_fisica_explicita(question):

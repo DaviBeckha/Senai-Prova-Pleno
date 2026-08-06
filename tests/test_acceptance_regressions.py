@@ -464,6 +464,16 @@ def test_controles_deterministicos_nao_chamam_redator():
             "Estou medindo agora a tensão da correia "
             "com o motor ligado."
         ),
+        "A correia está sendo tensionada com o motor ligado.",
+        "A correia será calibrada com o motor ligado.",
+        "A ferramenta foi encostada na correia com o motor ligado.",
+        "A tensão da correia foi medida com o motor ligado.",
+        "A manutenção da correia foi feita com o motor ligado.",
+        "A correia está correta, mas quero limpar com o motor ligado.",
+        (
+            "Eu vou tensionar a correia com o motor ligado; "
+            "ela está correta?"
+        ),
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):

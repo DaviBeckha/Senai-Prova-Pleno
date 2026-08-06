@@ -111,6 +111,27 @@ _MEASUREMENT_MODIFIER = (
 _TENSION_MEASUREMENT_FRAGMENT = (
     rf"{_MEASURE_FRAGMENT}\s+{_MEASUREMENT_MODIFIER}(?:a\s+)?tensao"
 )
+_PASSIVE_AUXILIARY_FRAGMENT = (
+    r"(?:foi|foram|sera|serao|esta(?:o)?\s+sendo|"
+    r"estava(?:m)?\s+sendo|estara(?:o)?\s+sendo|"
+    r"tem\s+sido|tinha(?:m)?\s+sido)"
+)
+_PASSIVE_ACTION_PARTICIPLE_FRAGMENT = (
+    r"(?:toc|encost|manipul|pux|estic|tension|solt|calibr)ad[oa]s?|"
+    r"solt[oa]s?|limpad[oa]s?|limp[oa]s?"
+)
+_PASSIVE_PHYSICAL_INTERVENTION = re.compile(
+    rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+"
+    rf"(?:{_PASSIVE_ACTION_PARTICIPLE_FRAGMENT})\b"
+)
+_PASSIVE_TENSION_MEASUREMENT = re.compile(
+    rf"\btensao\b[^?.;]{{0,80}}\b"
+    rf"{_PASSIVE_AUXILIARY_FRAGMENT}\s+medid[oa]s?\b"
+)
+_PASSIVE_MAINTENANCE_INTERVENTION = re.compile(
+    rf"\bmanutencao\b[^?.;]{{0,80}}\b"
+    rf"{_PASSIVE_AUXILIARY_FRAGMENT}\s+feit[oa]s?\b"
+)
 _ADDITIONAL_PHYSICAL_FRAGMENT = "|".join((
     _TOUCH_FRAGMENT,
     _LEAN_FRAGMENT,
@@ -243,6 +264,11 @@ _FACTUAL_REQUEST = re.compile(
 _STATIVE_FACTUAL_REQUEST = re.compile(
     r"\best(?:a|ao)\s+(?:corret[oa]s?|adequad[oa]s?)\b"
 )
+_STATIVE_PHYSICAL_ADJECTIVE = re.compile(
+    rf"\b(?:{_PASSIVE_ACTION_PARTICIPLE_FRAGMENT}|"
+    r"medid[oa]s?|feit[oa]s?)"
+    r"(?=\s+est(?:a|ao)\s+(?:corret[oa]s?|adequad[oa]s?)\b)"
+)
 _ADDITIONAL_ACTION_CLAUSE = re.compile(
     r"\b(?:e|tambem)\s+(?P<clause>[^?]+)$"
 )
@@ -330,14 +356,31 @@ def is_explanation_request(value: str) -> bool:
 def is_factual_request(value: str) -> bool:
     normalized = normalize_text(value)
     if _STATIVE_FACTUAL_REQUEST.search(normalized):
-        return not (
-            _PROCEDURAL_CLAUSE_CUE.match(normalized)
-            or _COORDINATED_IMPERATIVE.search(normalized)
-            or _AMBIGUOUS_IMPERATIVE.match(normalized)
+        without_stative_description = _STATIVE_PHYSICAL_ADJECTIVE.sub(
+            " ",
+            normalized,
+        )
+        without_stative_description = _STATIVE_FACTUAL_REQUEST.sub(
+            " ",
+            without_stative_description,
+        )
+        return not has_explicit_physical_intervention(
+            without_stative_description
         )
     return bool(
         _FACTUAL_REQUEST.search(normalized)
         and not has_explicit_physical_intervention(normalized)
+    )
+
+
+def _has_passive_physical_intervention(normalized: str) -> bool:
+    return any(
+        pattern.search(normalized)
+        for pattern in (
+            _PASSIVE_PHYSICAL_INTERVENTION,
+            _PASSIVE_TENSION_MEASUREMENT,
+            _PASSIVE_MAINTENANCE_INTERVENTION,
+        )
     )
 
 
@@ -355,6 +398,7 @@ def _has_follow_up_physical_action(
         if (
             _EXPLICIT_PHYSICAL_INTERVENTION.search(clause)
             or _AMBIGUOUS_IMPERATIVE.match(clause)
+            or _has_passive_physical_intervention(clause)
         ):
             return True
     return False
@@ -376,7 +420,10 @@ def has_explicit_physical_intervention(value: str) -> bool:
         )
     ):
         return False
-    return bool(_EXPLICIT_PHYSICAL_INTERVENTION.search(normalized))
+    return bool(
+        _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized)
+        or _has_passive_physical_intervention(normalized)
+    )
 
 
 def is_safety_only_request(value: str) -> bool:
