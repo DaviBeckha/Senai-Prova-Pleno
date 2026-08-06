@@ -112,7 +112,9 @@ _TENSION_MEASUREMENT_FRAGMENT = (
     rf"{_MEASURE_FRAGMENT}\s+{_MEASUREMENT_MODIFIER}(?:a\s+)?tensao"
 )
 _PASSIVE_AUXILIARY_FRAGMENT = (
-    r"(?:foi|foram|sera|serao|esta(?:o)?\s+sendo|"
+    r"(?:e|sao|foi|foram|sera|serao|seria|seriam|seja|sejam|"
+    r"fosse|fossem|(?:vai|vao|deve|devem|pode|podem|precisa|precisam)"
+    r"\s+ser|tem\s+que\s+ser|esta(?:o)?\s+sendo|"
     r"estava(?:m)?\s+sendo|estara(?:o)?\s+sendo|"
     r"tem\s+sido|tinha(?:m)?\s+sido)"
 )
@@ -125,12 +127,16 @@ _PASSIVE_PHYSICAL_INTERVENTION = re.compile(
     rf"(?:{_PASSIVE_ACTION_PARTICIPLE_FRAGMENT})\b"
 )
 _PASSIVE_TENSION_MEASUREMENT = re.compile(
-    rf"\btensao\b[^?.;]{{0,80}}\b"
-    rf"{_PASSIVE_AUXILIARY_FRAGMENT}\s+medid[oa]s?\b"
+    rf"(?:\btensao\b[^?.;]{{0,80}}\b"
+    rf"{_PASSIVE_AUXILIARY_FRAGMENT}\s+medid[oa]s?\b|"
+    rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+medid[oa]s?\b"
+    rf"[^?.;]{{0,80}}\btensao\b)"
 )
 _PASSIVE_MAINTENANCE_INTERVENTION = re.compile(
-    rf"\bmanutencao\b[^?.;]{{0,80}}\b"
-    rf"{_PASSIVE_AUXILIARY_FRAGMENT}\s+feit[oa]s?\b"
+    rf"(?:\bmanutencao\b[^?.;]{{0,80}}\b"
+    rf"{_PASSIVE_AUXILIARY_FRAGMENT}\s+feit[oa]s?\b|"
+    rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+feit[oa]s?\b"
+    rf"[^?.;]{{0,80}}\bmanutencao\b)"
 )
 _ADDITIONAL_PHYSICAL_FRAGMENT = "|".join((
     _TOUCH_FRAGMENT,
