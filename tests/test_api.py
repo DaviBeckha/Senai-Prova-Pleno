@@ -23,7 +23,7 @@ class FakePipeline:
         self.last_mode = mode
         return DiagnosisReport("diagnostico", "correia", "ajustar tensao",
                                10, 1.5, ["Doc4.pdf"], "template", False,
-                               {"correia": 10})
+                               {"correia": 10}, 10)
 
     def answer_question(self, pergunta, mode=None):
         self.last_mode = mode
@@ -82,6 +82,7 @@ def test_eventos_retorna_diagnostico():
     assert data["status"] == "diagnostico"
     assert data["sources"] == ["Doc4.pdf"]
     assert data["family_votes"] == {"correia": 10}
+    assert data["neighbor_count"] == 10
 
 
 def test_eventos_valida_campos():

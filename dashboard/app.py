@@ -97,8 +97,14 @@ with aba_chat:
 
             try:
                 r = httpx.post(f"{API_URL}/eventos", json=payload, timeout=REQUEST_TIMEOUT).json()
-                st.info(f"Status: {r['status']} | Família: {r['family']} | "
-                        f"Ocorrências: {r['total_ocorrencias']} ({r['freq_per_day']}/dia)")
+                # Duas grandezas distintas: neighbor_count é quantos vizinhos o
+                # kNN desta consulta de fato votou (top-3 no caption abaixo);
+                # total_ocorrencias/freq_per_day é o histórico completo da
+                # família vencedora (occurrence_stats), não os vizinhos consultados.
+                st.info(f"Status: {r['status']} | Família: {r['family']} — "
+                        f"voto de {r['neighbor_count']} vizinhos mais próximos. "
+                        f"Histórico da família: {r['total_ocorrencias']} ocorrências "
+                        f"({r['freq_per_day']}/dia).")
                 st.markdown(r["message"])
 
                 # Comparação honesta: rótulo real vs diagnóstico

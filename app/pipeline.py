@@ -57,6 +57,14 @@ class DiagnosisReport:
     # majoritario concorda com a familia real da propria linha em ~46%.
     # Sempre preenchido apos uma query (nunca {}).
     family_votes: dict[str, int]
+    # neighbor_count e uma grandeza DIFERENTE de total_ocorrencias: e quantos
+    # vizinhos a query kNN desta requisicao de fato consultou (len de
+    # result.neighbor_ids, k=50 clampado ao tamanho do historico), nao o
+    # total historico da familia vencedora. Sem default proposital: os quatro
+    # retornos de diagnose() sempre preenchem com o valor real da query —
+    # um construtor futuro que esquecer o campo deve quebrar em vez de
+    # herdar silenciosamente um 0 incorreto.
+    neighbor_count: int
 
 
 class PrescriptivePipeline:
@@ -98,13 +106,13 @@ class PrescriptivePipeline:
                 "estado", decision.family,
                 MSG_ESTADO.format(family=decision.family),
                 stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes)
+                result.family_votes, len(result.neighbor_ids))
         if decision.outcome == "nao_documentado":
             return DiagnosisReport(
                 "sem_documento", decision.family,
                 MSG_SEM_DOCUMENTO.format(family=decision.family),
                 stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes)
+                result.family_votes, len(result.neighbor_ids))
 
         hits = self._index.search(f"como corrigir {decision.family}",
                                   doc_family=decision.family,
@@ -120,13 +128,14 @@ class PrescriptivePipeline:
                 "sem_documento", decision.family,
                 MSG_SEM_TRECHOS.format(family=decision.family),
                 stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes)
+                result.family_votes, len(result.neighbor_ids))
         ctx = DiagnosisContext(decision.family, stats, chunks, event)
         outcome = self._pick_router(mode).render(ctx)
         return DiagnosisReport(
             "diagnostico", decision.family, outcome.text, stats.total,
             stats.freq_per_day, sorted({c.source for c in chunks}),
-            outcome.renderer, outcome.degraded, result.family_votes)
+            outcome.renderer, outcome.degraded, result.family_votes,
+            len(result.neighbor_ids))
 
     def answer_question(self, pergunta: str, mode: str | None = None) -> ChatReport:
         # A intencao e resolvida ANTES de tocar RAG ou LLM: a maioria das
