@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "endpoint": "POST /eventos",
+  "case_count": 5,
+  "real_model_calls": 3,
+  "database_side_effect": "Cada chamada de /eventos registra Event e Diagnosis no PostgreSQL configurado.",
+  "shared_responses": {
+    "correia_template": {
+      "status": "diagnostico",
+      "family": "correia",
+      "message": "Não foi possível validar uma resposta gerada. Foram exibidos quatro trechos: 1 Objetivo; 2 Remover a correia antiga; 18 Recomendações Preventivas; 12 Verificação Dinâmica.",
+      "total_ocorrencias": 11999,
+      "freq_per_day": 1499.88,
+      "sources": ["Doc4.pdf"],
+      "renderer": "template",
+      "degraded": true,
+      "family_votes": {
+        "correia": 9,
+        "rolamento_outer": 9,
+        "rolamento_inner": 7,
+        "rolamento_combination": 7,
+        "normal": 2,
+        "rolamento_ball": 9,
+        "cocked_rotor": 5,
+        "eccentric_rotor": 2
+      },
+      "neighbor_count": 50,
+      "validation_error_from_logs": "passo 1: ação possui suporte lexical de 0.50, abaixo de 0.60",
+      "assessment": "Classificação repetível, mas inconclusiva: três famílias empataram com 9/50 votos. A recuperação é genérica e todas as gerações degradaram."
+    }
+  },
+  "cases": [
+    {
+      "id": "DIAG-001",
+      "fixture": "demo/evento_correia.json",
+      "mode": "offline",
+      "elapsed_seconds": 41.8,
+      "model_called": true,
+      "response_ref": "correia_template",
+      "assessment": "Primeira chamada com modelo frio; fallback por grounding."
+    },
+    {
+      "id": "DIAG-002",
+      "fixture": "demo/evento_correia.json",
+      "mode": "offline",
+      "elapsed_seconds": 17.24,
+      "model_called": true,
+      "response_ref": "correia_template",
+      "assessment": "Repetição com modelo aquecido; mesma classificação, evidência e fallback."
+    },
+    {
+      "id": "DIAG-003",
+      "fixture": "demo/evento_correia.json",
+      "mode": "offline",
+      "elapsed_seconds": 15.22,
+      "model_called": true,
+      "response_ref": "correia_template",
+      "assessment": "Terceira repetição; confirma determinismo do kNN/RAG e rejeição recorrente do redator."
+    },
+    {
+      "id": "DIAG-004",
+      "fixture": "demo/evento_ventoinha.json",
+      "mode": null,
+      "elapsed_seconds": 0.08,
+      "model_called": false,
+      "response": {
+        "status": "sem_documento",
+        "family": "ventoinha",
+        "message": "Problema identificado como 'ventoinha', porém ainda não existe documento orientativo cadastrado para ele. Registre um novo documento para habilitar as recomendações.",
+        "total_ocorrencias": 12299,
+        "freq_per_day": 878.5,
+        "sources": [],
+        "renderer": null,
+        "degraded": false,
+        "family_votes": {
+          "ventoinha": 13,
+          "rolamento_combination": 10,
+          "polia": 7,
+          "normal": 2,
+          "cocked_rotor": 6,
+          "rolamento_ball": 5,
+          "rolamento_outer": 4,
+          "rolamento_inner": 1,
+          "eccentric_rotor": 2
+        },
+        "neighbor_count": 50
+      },
+      "assessment": "Guardrail sem documento funcionou corretamente e sem chamar o modelo. A confiança do kNN ainda é baixa: 13/50 votos."
+    },
+    {
+      "id": "DIAG-005",
+      "fixture": "demo/evento_normal.json",
+      "mode": null,
+      "elapsed_seconds": 0.08,
+      "model_called": false,
+      "response": {
+        "status": "estado",
+        "family": "normal",
+        "message": "Evento classificado como estado de operação 'normal' — nenhuma falha identificada.",
+        "total_ocorrencias": 15058,
+        "freq_per_day": 320.38,
+        "sources": [],
+        "renderer": null,
+        "degraded": false,
+        "family_votes": {
+          "normal": 28,
+          "motor_desligado": 16,
+          "rolamento_combination": 2,
+          "baseline": 2,
+          "rolamento_ball": 1,
+          "cocked_rotor": 1
+        },
+        "neighbor_count": 50
+      },
+      "assessment": "Estado normal reconhecido corretamente, sem RAG ou LLM."
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "run_id": "manual-ollama-qwen2.5-7b-instruct-2026-08-06",
+  "date": "2026-08-06",
+  "timezone": "America/Sao_Paulo",
+  "purpose": "Avaliar diagnóstico e chat locais antes de melhorias no RAG, grounding e reconhecimento de intenção.",
+  "environment": {
+    "api_health": "ready",
+    "dashboard_http_status": 200,
+    "ollama_health": "healthy",
+    "model": "qwen2.5:7b-instruct",
+    "model_size": "4.7 GB em disco; 5.5 GB carregado",
+    "processor": "100% CPU",
+    "context_tokens": 8192,
+    "mode": "offline",
+    "note": "A interface Streamlit respondeu HTTP 200, mas os casos foram exercitados diretamente pela API para repetibilidade."
+  },
+  "counts": {
+    "http_requests": 22,
+    "chat_requests": 17,
+    "diagnosis_requests": 5,
+    "real_model_calls": 16,
+    "model_outputs_accepted_by_grounding": 9,
+    "model_outputs_rejected_to_template": 7,
+    "deterministic_controls_correct": 4,
+    "false_out_of_scope": 2
+  },
+  "rates": {
+    "grounding_acceptance_percent": 56.25,
+    "fallback_percent": 43.75,
+    "fully_satisfactory_model_answers_percent": 0.0,
+    "note": "A aceitação pelo grounding comprova suporte na fonte, não relevância nem completude da resposta."
+  },
+  "model_latency_seconds": {
+    "sample_size": 16,
+    "minimum": 15.22,
+    "median": 31.22,
+    "mean": 42.41,
+    "maximum": 243.61,
+    "chat_mean": 46.49,
+    "diagnosis_mean": 24.75,
+    "mean_excluding_complete_procedure_outlier": 28.996
+  },
+  "key_findings": [
+    {
+      "id": "F-001",
+      "severity": "critical",
+      "area": "rag_relevance",
+      "title": "Resposta fundamentada, porém irrelevante para correia frouxa",
+      "evidence_cases": ["CHAT-017"],
+      "detail": "A pergunta exata 'Como faco para corrigir uma correia frouxa?' recebeu 'Remover a correia antiga'. A frase existe no documento e passou no grounding, mas não responde ao sintoma."
+    },
+    {
+      "id": "F-002",
+      "severity": "critical",
+      "area": "diagnosis_confidence",
+      "title": "Diagnóstico firme apesar de empate e baixa votação",
+      "evidence_cases": ["DIAG-001", "DIAG-002", "DIAG-003"],
+      "detail": "Correia venceu com apenas 9/50 votos e empatou com rolamento_outer e rolamento_ball, mas o status permaneceu diagnóstico conclusivo."
+    },
+    {
+      "id": "F-003",
+      "severity": "high",
+      "area": "answer_adequacy",
+      "title": "Grounding não valida se a pergunta foi respondida",
+      "evidence_cases": ["CHAT-005", "CHAT-006", "CHAT-008", "CHAT-011", "CHAT-012", "CHAT-014"],
+      "detail": "Respostas com uma ação insuficiente ou somente limitações foram aceitas como answered e degraded=false."
+    },
+    {
+      "id": "F-004",
+      "severity": "high",
+      "area": "safety_retrieval",
+      "title": "Pergunta explícita de segurança recuperou verificação de estabilidade",
+      "evidence_cases": ["CHAT-012"],
+      "detail": "A consulta de segurança não forçou a seção de desligamento, bloqueio, ausência de energia e parada completa."
+    },
+    {
+      "id": "F-005",
+      "severity": "high",
+      "area": "chunking",
+      "title": "Passos numerados foram separados do título pai",
+      "evidence_cases": ["CHAT-001", "CHAT-003", "CHAT-017", "DIAG-001"],
+      "detail": "Trechos como 'Remover a correia antiga' aparecem isolados de 'Substituição da Correia', favorecendo recuperação fora de contexto."
+    },
+    {
+      "id": "F-006",
+      "severity": "medium",
+      "area": "intent_aliases",
+      "title": "Variações naturais foram classificadas como fora de escopo",
+      "evidence_cases": ["CHAT-009", "CHAT-010", "CHAT-013", "CHAT-014"],
+      "detail": "'esferas do rolamento' e 'falha combinada de rolamento' falharam; as variantes exatas no singular e com a preposição 'no' funcionaram."
+    },
+    {
+      "id": "F-007",
+      "severity": "medium",
+      "area": "grounding_false_rejection",
+      "title": "Validador lexical rejeitou paráfrases próximas",
+      "evidence_cases": ["CHAT-001", "CHAT-002", "CHAT-003", "DIAG-001", "DIAG-002", "DIAG-003"],
+      "detail": "Seis rejeições ocorreram por suporte lexical abaixo de 0.60; outra ocorreu por citação não localizada literalmente."
+    },
+    {
+      "id": "F-008",
+      "severity": "medium",
+      "area": "performance",
+      "title": "Procedimento completo é lento e produz fallback enorme",
+      "evidence_cases": ["CHAT-002"],
+      "detail": "A consulta levou 243.61 s em CPU, enviou 58 chunks e terminou em template extrativo de difícil leitura."
+    }
+  ],
+  "recommended_order": [
+    "Adicionar validação de relevância e completude por intenção/família.",
+    "Preservar hierarquia seção-passo no chunking e recuperar o bloco pai com os passos filhos.",
+    "Criar abstention/inconclusivo para empate ou baixa confiança do kNN.",
+    "Forçar evidência de segurança em perguntas de intervenção ou segurança.",
+    "Ampliar aliases e testes com plurais e preposições naturais.",
+    "Otimizar procedimento completo, streaming e execução em GPU.",
+    "Expor validation_errors também no contrato de diagnóstico."
+  ],
+  "files": {
+    "chat_cases": "chat-results.json",
+    "diagnosis_cases": "diagnosis-results.json"
+  }
+}
