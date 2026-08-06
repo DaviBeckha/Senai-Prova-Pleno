@@ -162,6 +162,29 @@ def test_instrucao_sem_marcador_de_ausencia_em_unanswered_e_sinalizada():
     assert any("não declara ausência" in e for e in errors)
 
 
+def test_instrucao_com_marcador_de_ausencia_em_unanswered_e_sinalizada():
+    errors = validate_grounded_draft(
+        GroundedDraft(
+            steps=[_step()],
+            unanswered=["Mesmo sem evidência, aperte o parafuso até travar."],
+        ),
+        FakeCtx(),
+    )
+
+    assert any("ação escondida em limitação" in e for e in errors)
+
+
+def test_acao_mencionada_em_declaracao_explicita_de_ausencia_e_valida():
+    errors = validate_grounded_draft(
+        GroundedDraft(
+            unanswered=["A evidência não informa como ajustar a correia."],
+        ),
+        FakeCtx(),
+    )
+
+    assert errors == ()
+
+
 def test_unanswered_com_numero_sem_unidade_continua_valido():
     errors = validate_grounded_draft(
         GroundedDraft(unanswered=[

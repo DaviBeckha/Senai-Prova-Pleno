@@ -14,9 +14,10 @@ conferencias por passo:
 6. negacao presente em apenas um dos lados (acao ou citacao) reprova —
    inverter o sentido da evidencia tambem e alucinacao.
 
-E duas sobre cada item de `unanswered`, que antes atravessava sem nenhuma
+E tres sobre cada item de `unanswered`, que antes atravessava sem nenhuma
 conferencia: ele nao pode afirmar valor de engenharia (nao ha citacao contra
-o que confronta-lo) e precisa de fato declarar ausencia. O campo e renderizado
+o que confronta-lo), precisa de fato declarar ausencia e nao pode esconder uma
+acao fora de uma declaracao explicita de ausencia. O campo e renderizado
 sob "### Limitacoes", sem fonte ao lado e na secao que se le como
 meta-informacao do sistema — instrucao contrabandeada ali chega ao operador
 com menos defesa do que num passo.
@@ -30,6 +31,7 @@ import re
 import unicodedata
 
 from app.chat.context import ChatContext
+from app.core.maintenance_intent import detect_actions
 from app.llm.contracts import GroundedDraft
 from app.rag.search import EvidenceItem
 
@@ -81,6 +83,22 @@ _MARCADORES_DE_AUSENCIA = {
     "nenhum", "nenhuma", "desconhecido", "desconhecida", "indisponivel",
     "insuficiente", "omite", "silencia",
 }
+_SUJEITO_DE_AUSENCIA = (
+    r"(?:evidencias?|fontes?|citacoes?|documentos?|manuais?|contextos?|"
+    r"informacoes?|procedimentos?|instrucoes?|dados?)"
+)
+_DECLARACAO_DE_AUSENCIA = (
+    re.compile(
+        rf"^(?:(?:a|as|o|os|esta|estas|esse|esses|essa|essas)\s+)?"
+        rf"{_SUJEITO_DE_AUSENCIA}\b.*\b(?:nao|sem|falta\w*|ausen\w*|"
+        r"indispon\w*|insuficiente|omite\w*|silencia\w*)\b"
+    ),
+    re.compile(
+        rf"^(?:nao\s+(?:ha|existe)|falta\w*|nenhum(?:a)?|ausen\w*|"
+        rf"indispon\w*|insuficiente)\s+{_SUJEITO_DE_AUSENCIA}\b"
+    ),
+    re.compile(rf"^sem\s+{_SUJEITO_DE_AUSENCIA}\s+(?:para|sobre|de|que)\b"),
+)
 
 
 class GroundingValidationError(ValueError):
@@ -92,6 +110,11 @@ def _normalize(value: str) -> str:
     return " ".join(
         "".join(ch for ch in decomposed if not unicodedata.combining(ch)).split()
     )
+
+
+def _is_explicit_absence_statement(value: str) -> bool:
+    normalized = _normalize(value)
+    return any(pattern.search(normalized) for pattern in _DECLARACAO_DE_AUSENCIA)
 
 
 def _valores_numericos(value: str) -> set[float]:
@@ -237,6 +260,11 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
         if not _tokens(item) & _MARCADORES_DE_AUSENCIA:
             errors.append(
                 f"limitação {position}: não declara ausência de evidência"
+            )
+        if detect_actions(item) and not _is_explicit_absence_statement(item):
+            errors.append(
+                f"limitação {position}: ação escondida em limitação sem "
+                "declaração explícita de ausência"
             )
     if not draft.steps and not draft.unanswered:
         errors.append("rascunho vazio")
