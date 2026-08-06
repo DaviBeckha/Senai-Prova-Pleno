@@ -79,8 +79,19 @@ _ACTION_PATTERNS = (
     ),
     (
         MaintenanceAction.REPAIR,
-        re.compile(r"\b(?:corrij\w*|corrig\w*|repar\w*|trat\w*|procedimento)\b"),
+        re.compile(
+            r"\b(?:corrij\w*|corrig\w*|consert\w*|repar\w*|trat\w*|"
+            r"procedimento)\b"
+        ),
     ),
+)
+
+# Acoes fisicas genericas que devem acionar seguranca, mas nao descrevem uma
+# categoria de evidencia para reranking. Mantê-las separadas evita transformar
+# "verificacoes de seguranca antes de mexer" em pedido de reparo no analisador.
+_GENERIC_PHYSICAL_INTERVENTION = re.compile(
+    r"\b(?:mex(?:er|a|am|endo|eu|e|em|o|emos|eram|ia|iam)|"
+    r"abr(?:ir|a|am|indo|iu)|desmont\w*)\b"
 )
 
 _CONDITION_PATTERNS = {
@@ -152,6 +163,17 @@ def roles_for_action(action: MaintenanceAction) -> frozenset[ContentRole]:
 
 def is_intervention_action(action: MaintenanceAction) -> bool:
     return action in _INTERVENTION_ACTIONS
+
+
+def requests_physical_intervention(
+    value: str,
+    actions: tuple[MaintenanceAction, ...] | None = None,
+) -> bool:
+    classified_actions = detect_actions(value) if actions is None else actions
+    return (
+        any(is_intervention_action(action) for action in classified_actions)
+        or bool(_GENERIC_PHYSICAL_INTERVENTION.search(normalize_text(value)))
+    )
 
 
 def classify_content_role(

@@ -342,13 +342,30 @@ def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida
 
 
 @pytest.mark.parametrize(
-    "pergunta",
+    ("pergunta", "status", "expected"),
     (
-        "Existe documento de ajuste da correia para motor ligado?",
-        "Quantos ajustes ocorreram com o motor ligado no histórico?",
+        (
+            "Existe manual para o ajuste da correia com o motor ligado?",
+            "documented",
+            "Existe documento orientativo cadastrado",
+        ),
+        (
+            "Qual foi o ajuste da correia no histórico com o motor ligado?",
+            "answered",
+            "20 ocorrências",
+        ),
+        (
+            "A troca da correia ocorreu com o motor ligado no histórico?",
+            "answered",
+            "20 ocorrências",
+        ),
     ),
 )
-def test_consulta_informativa_nao_e_substituida_por_orientacao_de_risco(pergunta):
+def test_consulta_informativa_nao_e_substituida_por_orientacao_de_risco(
+    pergunta,
+    status,
+    expected,
+):
     pipeline = _pipeline(
         _df(["correia"]),
         {"correia"},
@@ -357,6 +374,10 @@ def test_consulta_informativa_nao_e_substituida_por_orientacao_de_risco(pergunta
 
     rep = pipeline.answer_question(pergunta)
 
+    assert rep.status == status
+    assert expected in rep.message
+    assert rep.sources == ()
+    assert rep.renderer is None
     assert "Não realize a intervenção" not in rep.message
 
 
@@ -423,6 +444,12 @@ def test_analise_preserva_multiplas_acoes_solicitadas():
     )
 
     assert analysis.requested_actions == ("inspect", "replace")
+
+
+def test_consertar_e_reconhecido_como_acao_de_reparo():
+    analysis = analyze_question("Como consertar uma correia?")
+
+    assert analysis.requested_actions == ("repair",)
 
 
 def test_analise_expoe_condicoes_que_sustentam_substituicao():

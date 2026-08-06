@@ -380,6 +380,10 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Posso reparar o conjunto com o motor ligado?",
         "Nós mexemos na correia com o motor ligado.",
         "Eles mexeram na correia com o motor ligado.",
+        "Como tratar o defeito da correia com o motor ligado?",
+        "Qual o procedimento da correia com o motor ligado?",
+        "Como consertar a correia com o motor ligado?",
+        "Como relubrificar o rolamento com o motor ligado?",
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):

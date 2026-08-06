@@ -225,10 +225,10 @@ class PrescriptivePipeline:
         # sensor associado — entao ChatReport nao carrega family_votes.
         analysis = analyze_question(pergunta)
 
-        # Politicas de pedido e de risco fisico vem ANTES do despacho por
-        # intencao: pedidos internos continuam recusados; uma intervencao com
-        # a maquina ligada recebe orientacao deterministica e termina antes de
-        # RAG/LLM, independentemente da familia reconhecida.
+        # Politicas do pedido continuam antes de qualquer despacho. Consultas
+        # estritamente factuais saem antes do guardrail fisico: palavras como
+        # "ajuste" e "troca" podem ser substantivos em uma consulta historica
+        # e nao representam uma ordem de intervencao.
         request_policy = inspect_request(pergunta)
         if request_policy.outcome is RequestOutcome.REFUSE_INTERNAL:
             return ChatReport(
@@ -242,23 +242,11 @@ class PrescriptivePipeline:
                 message=request_policy.message,
                 families=analysis.explicit_families,
             )
-        safety = assess_question_safety(pergunta)
-        if safety.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION:
-            return ChatReport(
-                status="answered",
-                message=safety.message,
-                families=analysis.explicit_families,
-            )
-
         if analysis.intent is ChatIntent.DOCUMENT_STATUS:
             return document_status_report(
                 analysis.explicit_families,
                 self._registry.has_document,
             )
-        if analysis.intent is ChatIntent.CLARIFICATION:
-            return clarification_report(analysis.candidate_families)
-        if analysis.intent is ChatIntent.OUT_OF_SCOPE:
-            return out_of_scope_report()
         if analysis.intent is ChatIntent.STATE:
             return state_report(analysis.explicit_families)
         if analysis.intent is ChatIntent.HISTORY:
@@ -270,6 +258,21 @@ class PrescriptivePipeline:
                 },
             )
 
+        # Toda intencao procedural usa a mesma taxonomia de acoes do
+        # reranking/validador. Com a maquina ligada, a resposta termina aqui e
+        # nunca expoe trechos executaveis do indice ou do modelo.
+        safety = assess_question_safety(pergunta, analysis.requested_actions)
+        if safety.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION:
+            return ChatReport(
+                status="answered",
+                message=safety.message,
+                families=analysis.explicit_families,
+            )
+
+        if analysis.intent is ChatIntent.CLARIFICATION:
+            return clarification_report(analysis.candidate_families)
+        if analysis.intent is ChatIntent.OUT_OF_SCOPE:
+            return out_of_scope_report()
         documented = tuple(
             family
             for family in analysis.explicit_families
