@@ -74,13 +74,25 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         if state.session_factory:
             from app.data.models import Diagnosis, Event
             with state.session_factory() as session:
-                event = Event(external_id=None, payload=features, family=report.family,
-                              kind=("estado" if report.status == "estado" else "falha"))
+                persisted_family = report.family or "inconclusivo"
+                if report.status == "estado":
+                    event_kind = "estado"
+                elif report.family is None:
+                    event_kind = "indeterminado"
+                else:
+                    event_kind = "falha"
+                event = Event(
+                    external_id=None,
+                    payload=features,
+                    family=persisted_family,
+                    kind=event_kind,
+                )
                 session.add(event)
                 try:
                     session.flush()  # gera event.id sem commitar
                     session.add(Diagnosis(event_id=event.id, status=report.status,
-                                          family=report.family, renderer=report.renderer,
+                                          family=persisted_family,
+                                          renderer=report.renderer,
                                           message=report.message,
                                           freq_per_day=report.freq_per_day))
                     session.commit()  # unico commit: tudo ou nada

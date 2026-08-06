@@ -14,7 +14,7 @@ EventIn = create_model(
 
 class DiagnosisOut(BaseModel):
     status: str
-    family: str
+    family: str | None
     message: str
     total_ocorrencias: int
     freq_per_day: float
@@ -27,6 +27,10 @@ class DiagnosisOut(BaseModel):
     # e o total historico da familia vencedora. Ver DiagnosisReport.neighbor_count
     # em app/pipeline.py.
     neighbor_count: int
+    candidate_families: list[str]
+    top_vote_share: float
+    vote_margin: int
+    validation_errors: list[str]
 
 
 class ChatIn(BaseModel):

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -25,7 +25,7 @@ from app.llm.adequacy import validate_evidence_adequacy
 from app.llm.router import Router
 from app.rag.retrieval import retrieve_evidence
 from app.similarity.engine import SimilarityEngine
-from app.similarity.stats import occurrence_stats
+from app.similarity.stats import OccurrenceStats, occurrence_stats
 
 MSG_SEM_DOCUMENTO = (
     "Problema identificado como '{family}', porém ainda não existe documento "
@@ -41,11 +41,15 @@ MSG_SEM_TRECHOS = (
     "nenhum trecho utilizável foi recuperado do índice. Reindexe o documento "
     "ou registre um novo para habilitar as recomendações."
 )
+MSG_DIAGNOSTICO_INCONCLUSIVO = (
+    "O kNN encontrou empate entre as famílias {families}. "
+    "O diagnóstico foi retido para não apresentar uma conclusão arbitrária."
+)
 
 @dataclass
 class DiagnosisReport:
     status: str
-    family: str
+    family: str | None
     message: str
     total_ocorrencias: int
     freq_per_day: float
@@ -66,6 +70,10 @@ class DiagnosisReport:
     # um construtor futuro que esquecer o campo deve quebrar em vez de
     # herdar silenciosamente um 0 incorreto.
     neighbor_count: int
+    candidate_families: list[str] = field(default_factory=list)
+    top_vote_share: float = 0.0
+    vote_margin: int = 0
+    validation_errors: tuple[str, ...] = field(default_factory=tuple)
 
 
 class PrescriptivePipeline:
@@ -100,6 +108,30 @@ class PrescriptivePipeline:
     def diagnose(self, event: dict, mode: str | None = None) -> DiagnosisReport:
         result = self._engine.query(event)
         decision = decide(result, self._registry.has_document)
+        result_metadata = {
+            "candidate_families": list(result.candidate_families),
+            "top_vote_share": result.top_vote_share,
+            "vote_margin": result.vote_margin,
+        }
+        if decision.outcome == "inconclusivo":
+            empty_stats = OccurrenceStats(0, "", "", {}, 0.0)
+            return DiagnosisReport(
+                status="diagnostico_inconclusivo",
+                family=None,
+                message=MSG_DIAGNOSTICO_INCONCLUSIVO.format(
+                    families=", ".join(decision.candidate_families)
+                ),
+                total_ocorrencias=empty_stats.total,
+                freq_per_day=empty_stats.freq_per_day,
+                sources=[],
+                renderer=None,
+                degraded=False,
+                family_votes=result.family_votes,
+                neighbor_count=len(result.neighbor_ids),
+                **result_metadata,
+            )
+
+        assert decision.family is not None
         stats = occurrence_stats(self._df, decision.family)
 
         if decision.outcome == "estado":
@@ -107,13 +139,15 @@ class PrescriptivePipeline:
                 "estado", decision.family,
                 MSG_ESTADO.format(family=decision.family),
                 stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes, len(result.neighbor_ids))
+                result.family_votes, len(result.neighbor_ids),
+                **result_metadata)
         if decision.outcome == "nao_documentado":
             return DiagnosisReport(
                 "sem_documento", decision.family,
                 MSG_SEM_DOCUMENTO.format(family=decision.family),
                 stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes, len(result.neighbor_ids))
+                result.family_votes, len(result.neighbor_ids),
+                **result_metadata)
 
         diagnosis_question = f"como corrigir {decision.family}"
         diagnosis_analysis = analyze_question(diagnosis_question)
@@ -136,14 +170,21 @@ class PrescriptivePipeline:
                 "sem_documento", decision.family,
                 MSG_SEM_TRECHOS.format(family=decision.family),
                 stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes, len(result.neighbor_ids))
+                result.family_votes, len(result.neighbor_ids),
+                **result_metadata)
         ctx = DiagnosisContext(decision.family, stats, chunks, event)
         outcome = self._pick_router(mode).render(ctx)
+        diagnosis_status = (
+            "diagnostico"
+            if outcome.answer_status == "answered"
+            else outcome.answer_status
+        )
         return DiagnosisReport(
-            "diagnostico", decision.family, outcome.text, stats.total,
+            diagnosis_status, decision.family, outcome.text, stats.total,
             stats.freq_per_day, sorted({c.source for c in chunks}),
             outcome.renderer, outcome.degraded, result.family_votes,
-            len(result.neighbor_ids))
+            len(result.neighbor_ids), validation_errors=outcome.validation_errors,
+            **result_metadata)
 
     def answer_question(self, pergunta: str, mode: str | None = None) -> ChatReport:
         # A intencao e resolvida ANTES de tocar RAG ou LLM: a maioria das
