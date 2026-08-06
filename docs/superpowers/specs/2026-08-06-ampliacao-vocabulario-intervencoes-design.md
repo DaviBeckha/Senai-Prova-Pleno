@@ -86,4 +86,3 @@ Os testes serão escritos antes da implementação e cobrirão:
 - Os controles conceituais e factuais definidos nos testes não são
   classificados como pedidos de intervenção.
 - Testes focados, suíte completa, lint e verificação do diff ficam verdes.
-

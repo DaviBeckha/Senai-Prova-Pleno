@@ -166,4 +166,3 @@ git push -u origin fix/ampliar-vocabulario-intervencoes
 ```
 
 Expected: branch remota criada no mesmo SHA local, pronta para PR e CI.
-
