@@ -105,15 +105,9 @@ def test_rascunho_so_com_unanswered_e_valido():
     assert errors == ()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "_NUMBER so reconhece digitos (\\b\\d+...\\b); um valor divergente "
-        "escrito por extenso (\"noventa\" em vez de 45) nao e comparado "
-        "contra o numero da citacao e passa sem nenhum erro."
-    ),
-)
-def test_numero_por_extenso_diverge_da_citacao_sem_ser_detectado():
+def test_numero_por_extenso_diverge_da_citacao_e_detectado():
+    # Sem conversao, findall("noventa N") devolve conjunto VAZIO e vazio e
+    # subconjunto de tudo: a conferencia numerica passava vacuamente.
     errors = validate_grounded_draft(
         GroundedDraft(steps=[_step(
             action="Aplicar a tensao recomendada de noventa N",
@@ -121,20 +115,59 @@ def test_numero_por_extenso_diverge_da_citacao_sem_ser_detectado():
     assert any("número sem suporte" in e for e in errors)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "unanswered nao passa por validacao de conteudo: um texto "
-        "procedural contrabandeado ali (torque, EPI, etapa) nao e conferido "
-        "contra nenhuma evidencia recuperada."
-    ),
-)
-def test_conteudo_procedural_em_unanswered_nao_e_sinalizado():
+def test_numero_por_extenso_que_confere_com_a_citacao_e_aceito():
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Aplicar a tensao recomendada de noventa N",
+            quote="Aplicar a tensao recomendada de 90 N.",
+            evidence_id="correia:E1")]),
+        FakeCtx(chunks=[Chunk(
+            "correia", "Doc4.pdf", "9.1 Correia Frouxa",
+            "Aplicar a tensao recomendada de 90 N.")]))
+    assert errors == ()
+
+
+def test_numero_composto_por_extenso_e_convertido():
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Aplicar a tensao recomendada de quarenta e cinco N",
+            quote="Aplicar a tensao recomendada de 45 N.")]), FakeCtx())
+    assert errors == ()
+
+
+def test_numeral_por_extenso_sem_unidade_nao_e_conferido():
+    # "dois parafusos" nao e valor de engenharia: exigir que a citacao
+    # repetisse o numeral transformaria linguagem natural em reprovacao.
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Afrouxar os dois parafusos do motor",
+            quote="Afrouxar os parafusos do motor")]), FakeCtx())
+    assert errors == ()
+
+
+def test_valor_tecnico_em_unanswered_e_sinalizado():
+    # `unanswered` e renderizado sob "### Limitacoes", sem citacao e sem fonte
+    # ao lado. Um valor de engenharia ali nao tem contra o que ser conferido —
+    # e chega ao operador na secao onde ele baixa a guarda.
     errors = validate_grounded_draft(
         GroundedDraft(unanswered=[
             "aplique 200 N de torque no parafuso mesmo sem evidência"
         ]), FakeCtx())
-    assert errors != ()
+    assert any("valor técnico sem evidência" in e for e in errors)
+
+
+def test_instrucao_sem_marcador_de_ausencia_em_unanswered_e_sinalizada():
+    errors = validate_grounded_draft(
+        GroundedDraft(unanswered=["aperte o parafuso até travar"]), FakeCtx())
+    assert any("não declara ausência" in e for e in errors)
+
+
+def test_unanswered_com_numero_sem_unidade_continua_valido():
+    errors = validate_grounded_draft(
+        GroundedDraft(unanswered=[
+            "a evidência não cobre a seção 9.2 do documento"
+        ]), FakeCtx())
+    assert errors == ()
 
 
 def test_abreviacao_e1_resolve_sem_ambiguidade():
