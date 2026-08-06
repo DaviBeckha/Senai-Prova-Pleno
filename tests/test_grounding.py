@@ -147,10 +147,19 @@ def test_valor_tecnico_em_unanswered_e_sinalizado():
     assert any("valor técnico sem evidência" in e for e in errors)
 
 
-def test_instrucao_sem_marcador_de_ausencia_em_unanswered_e_sinalizada():
+def test_unanswered_que_nao_declara_ausencia_nao_invalida_o_rascunho():
+    # Texto real capturado do qwen2.5:7b-instruct rodando contra os documentos
+    # deste projeto: o modelo usa `unanswered` para ecoar o ASSUNTO pendente
+    # ("Como corrigir um rotor inclinado" era a propria pergunta), nao para
+    # afirmar a ausencia. Exigir marca de ausencia reprovava o rascunho INTEIRO
+    # por isso: em 3 de 4 casos medidos, uma resposta com passo ja aprovado nas
+    # seis conferencias caiu para template extrativo por defeito de forma em
+    # outro campo. A pena era desproporcional ao defeito.
     errors = validate_grounded_draft(
-        GroundedDraft(unanswered=["aperte o parafuso até travar"]), FakeCtx())
-    assert any("não declara ausência" in e for e in errors)
+        GroundedDraft(steps=[_step()],
+                      unanswered=["Como corrigir um rotor inclinado"]),
+        FakeCtx())
+    assert errors == ()
 
 
 def test_unanswered_com_numero_sem_unidade_continua_valido():

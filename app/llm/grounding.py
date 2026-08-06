@@ -14,12 +14,18 @@ conferencias por passo:
 6. negacao presente em apenas um dos lados (acao ou citacao) reprova —
    inverter o sentido da evidencia tambem e alucinacao.
 
-E duas sobre cada item de `unanswered`, que antes atravessava sem nenhuma
-conferencia: ele nao pode afirmar valor de engenharia (nao ha citacao contra
-o que confronta-lo) e precisa de fato declarar ausencia. O campo e renderizado
-sob "### Limitacoes", sem fonte ao lado e na secao que se le como
-meta-informacao do sistema — instrucao contrabandeada ali chega ao operador
-com menos defesa do que num passo.
+E uma sobre cada item de `unanswered`, que antes atravessava sem nenhuma
+conferencia: ele nao pode afirmar valor de engenharia, porque nao ha citacao
+contra a qual confronta-lo. O campo e renderizado sob "### Limitacoes", sem
+fonte ao lado e na secao que se le como meta-informacao do sistema — um
+torque afirmado ali chega ao operador com menos defesa do que num passo.
+
+Uma segunda conferencia chegou a existir aqui e foi removida: exigir que o
+item declarasse ausencia ("nao cobre", "falta", "sem"). Ela reprovava o
+comportamento real do modelo, que usa `unanswered` para ecoar o ASSUNTO
+pendente em vez de afirmar a ausencia — e a pena, invalidar o rascunho
+inteiro, descartava passos ja aprovados nas seis conferencias. Ver
+test_unanswered_que_nao_declara_ausencia_nao_invalida_o_rascunho.
 
 Qualquer passo reprovado invalida o rascunho INTEIRO — meia resposta
 fundamentada e meia inventada continua sendo uma resposta inventada.
@@ -74,13 +80,6 @@ _EXTENSO_COM_UNIDADE = re.compile(
     rf"\b({_NUMERAL_ISOLADO})(?:\s+e\s+({_NUMERAL_ISOLADO}))?\s+{_UNIDADES}\b"
 )
 _DIGITO_COM_UNIDADE = re.compile(rf"\b\d+(?:[.,]\d+)?\s*{_UNIDADES}\b")
-# Um item de `unanswered` declara o que a evidencia NAO cobre. Sem nenhuma
-# destas marcas, o item nao esta declarando ausencia — esta instruindo.
-_MARCADORES_DE_AUSENCIA = {
-    "nao", "sem", "falta", "faltam", "faltou", "ausente", "ausencia",
-    "nenhum", "nenhuma", "desconhecido", "desconhecida", "indisponivel",
-    "insuficiente", "omite", "silencia",
-}
 
 
 class GroundingValidationError(ValueError):
@@ -219,10 +218,6 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
         if _DIGITO_COM_UNIDADE.search(normalizado) or _EXTENSO_COM_UNIDADE.search(normalizado):
             errors.append(
                 f"limitação {position}: valor técnico sem evidência que o sustente"
-            )
-        if not _tokens(item) & _MARCADORES_DE_AUSENCIA:
-            errors.append(
-                f"limitação {position}: não declara ausência de evidência"
             )
     if not draft.steps and not draft.unanswered:
         errors.append("rascunho vazio")
