@@ -539,6 +539,10 @@ def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only(
             "Quais medidas de segurança e etapas de bloqueio para a troca "
             "da correia?"
         ),
+        (
+            "Quais medidas de segurança e quais etapas de bloqueio para a "
+            "troca da correia?"
+        ),
     ),
 )
 def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(
@@ -610,6 +614,20 @@ def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question)
 
     assert analysis.intent is ChatIntent.FACTUAL
     assert analysis.requested_actions == ()
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Como ajustar a correia para o valor recomendado com o motor ligado?",
+        "Qual o custo para trocar a correia com o motor ligado?",
+    ),
+)
+def test_cue_factual_nao_neutraliza_acao_fisica_explicita(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.requested_actions
 
 
 @pytest.mark.parametrize("verb", ("remover", "instalar"))

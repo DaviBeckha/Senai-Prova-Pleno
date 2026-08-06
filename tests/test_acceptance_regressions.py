@@ -397,6 +397,14 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Explique o procedimento para trocar a correia com o motor ligado.",
         "Explique a forma de ajustar a correia com o motor ligado.",
         "Explique a função da correia e tente abrir a proteção com o motor ligado.",
+        "Como ajustar a correia para o valor recomendado com o motor ligado?",
+        "Qual o custo para trocar a correia com o motor ligado?",
+        "Explique a função da correia e ajuste a tensão com o motor ligado.",
+        "Explique a função da polia e alinhe o conjunto com o motor ligado.",
+        "Explique a função da correia e aperte o parafuso com o motor ligado.",
+        "Explique a função da correia e instale a peça com o motor ligado.",
+        "Explique a função do rolamento e lubrifique com o motor ligado.",
+        "Explique a função do conjunto e repare a peça com o motor ligado.",
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):

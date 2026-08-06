@@ -107,6 +107,18 @@ _EXPLICIT_PHYSICAL_FRAGMENT = (
 _EXPLICIT_PHYSICAL_INTERVENTION = re.compile(
     rf"\b(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b"
 )
+_AMBIGUOUS_IMPERATIVE_FRAGMENT = (
+    r"ajust(?:e|em)|(?:re)?apert(?:e|em)|alinh(?:e|em)|"
+    r"(?:re)?lubrifiqu(?:e|em)|"
+    r"(?:repar|consert|trat|instal|desmont)(?:e|em)"
+)
+_AMBIGUOUS_IMPERATIVE = re.compile(
+    rf"\b(?:{_AMBIGUOUS_IMPERATIVE_FRAGMENT})\b"
+)
+_COORDINATED_IMPERATIVE = re.compile(
+    rf"\b(?:e|tambem|depois|entao)\s+(?:por favor\s+)?"
+    rf"(?:{_AMBIGUOUS_IMPERATIVE_FRAGMENT})\b"
+)
 _EXPLANATION_REQUEST = re.compile(
     r"\b(?:o que significa|o que (?:e|sao)|qual (?:e )?a definicao|"
     r"qual (?:e )?a diferenca|para que serve|explique|defina|conceitue)\b"
@@ -129,7 +141,7 @@ _PROCEDURAL_CLAUSE_CUE = re.compile(
     r"^(?:o\s+)?passo a passo\b"
 )
 _SAFETY_CONTEXT_CLAUSE = re.compile(
-    r"^(?:(?:as|quais as)\s+)?etapas?\s+de\s+"
+    r"^(?:(?:as|quais(?: as)?)\s+)?etapas?\s+de\s+"
     r"(?:seguranca|bloqueio|etiquetagem)\b|"
     r"^(?:seguranca|bloqueio|etiquetagem|cuidados?|epis?)\b"
 )
@@ -192,7 +204,7 @@ def is_explanation_request(value: str) -> bool:
     normalized = normalize_text(value)
     if not _EXPLANATION_REQUEST.search(normalized):
         return False
-    if _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized):
+    if has_explicit_physical_intervention(normalized):
         return False
     return not (
         _PROCEDURAL_NOMINAL_CUE.search(normalized)
@@ -204,7 +216,19 @@ def is_explanation_request(value: str) -> bool:
 
 
 def is_factual_request(value: str) -> bool:
-    return bool(_FACTUAL_REQUEST.search(normalize_text(value)))
+    normalized = normalize_text(value)
+    return bool(
+        _FACTUAL_REQUEST.search(normalized)
+        and not has_explicit_physical_intervention(normalized)
+    )
+
+
+def has_explicit_physical_intervention(value: str) -> bool:
+    normalized = normalize_text(value)
+    return bool(
+        _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized)
+        or _COORDINATED_IMPERATIVE.search(normalized)
+    )
 
 
 def is_safety_only_request(value: str) -> bool:
@@ -220,9 +244,11 @@ def is_safety_only_request(value: str) -> bool:
                 and (
                     detect_actions(clause)
                     or _EXPLICIT_PHYSICAL_INTERVENTION.search(clause)
+                    or _AMBIGUOUS_IMPERATIVE.search(clause)
                 )
             )
             or _EXPLICIT_PHYSICAL_INTERVENTION.match(clause)
+            or _AMBIGUOUS_IMPERATIVE.match(clause)
         )
     )
     return bool(
@@ -245,7 +271,7 @@ def requests_physical_intervention(
     actions: tuple[MaintenanceAction, ...] | None = None,
 ) -> bool:
     normalized = normalize_text(value)
-    if _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized):
+    if has_explicit_physical_intervention(normalized):
         return True
     if is_explanation_request(value):
         return False
