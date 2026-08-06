@@ -96,6 +96,13 @@ DIAGNOSTICO_EMPATE = {
     "degradado": True,
     "erros_de_validacao": ["passo 1: ação possui suporte lexical de 0.40, "
                            "abaixo de 0.60"],
+    "evidencias": [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": "Ajustar a tensão da correia.",
+    }],
     "votos_por_familia": {"correia": 9, "rolamento_outer": 9,
                           "rolamento_ball": 9, "rolamento_inner": 7,
                           "normal": 2},
@@ -111,6 +118,13 @@ CHAT_RESPONDIDO = {
     "degradado": False,
     "limitacoes": ["A evidência não cobre o torque exato de reaperto."],
     "erros_de_validacao": [],
+    "evidencias": [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": "Ajustar a tensão da correia.",
+    }],
 }
 
 
@@ -344,6 +358,20 @@ def test_pagina_diagnostico_mostra_fontes_e_redator():
     assert "determinística" in texto
 
 
+def test_pagina_diagnostico_coloca_evidencia_bruta_em_expansor():
+    prova = _rodar("diagnostico.py")
+    prova.button[0].click().run()
+
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
+    assert any(
+        "Ajustar a tensão da correia." in bloco.value
+        for bloco in prova.code
+    )
+
+
 def test_pagina_diagnostico_compara_rotulo_real_com_o_diagnostico():
     prova = _rodar("diagnostico.py")
     prova.button[0].click().run()
@@ -408,6 +436,21 @@ def test_pagina_chat_mostra_limitacoes_declaradas():
     prova.chat_input[0].set_value("como corrigir correia?").run()
 
     assert "torque exato" in _textos(prova)
+
+
+def test_pagina_chat_coloca_evidencia_bruta_em_expansor():
+    prova = _rodar("chat.py")
+    prova.chat_input[0].set_value("como corrigir correia?").run()
+
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
+    assert any("Doc4.pdf" in caption.value for caption in prova.caption)
+    assert any(
+        "Ajustar a tensão da correia." in bloco.value
+        for bloco in prova.code
+    )
 
 
 # --- Documentos ------------------------------------------------------------

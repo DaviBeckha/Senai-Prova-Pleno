@@ -19,6 +19,7 @@ import streamlit as st
 
 import api
 import confianca as conf
+import evidencias
 import estado
 import formato
 import graficos
@@ -155,9 +156,9 @@ st.subheader("Recomendação")
 if resposta["degradado"]:
     st.warning(
         "**Texto não produzido pelo modelo.** A geração foi rejeitada pela "
-        "validação de fundamentação e o sistema caiu para extração "
-        "determinística dos trechos recuperados. Trate como evidência bruta, "
-        "não como orientação redigida.",
+        "validação de fundamentação. A orientação foi organizada "
+        "deterministicamente a partir dos trechos recuperados; os originais "
+        "continuam disponíveis no expansor de evidências.",
     )
 
 mensagem = resposta["mensagem"]
@@ -170,6 +171,11 @@ if len(mensagem) > 1500:
         st.markdown(mensagem)
 else:
     st.markdown(mensagem)
+
+evidencias.mostrar_evidencias(
+    resposta.get("evidencias", []),
+    familias.rotulo,
+)
 
 col_fontes, col_redator = st.columns(2)
 with col_fontes:
