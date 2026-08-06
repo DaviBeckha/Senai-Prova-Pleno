@@ -470,11 +470,18 @@ def test_controles_deterministicos_nao_chamam_redator():
         "A tensão da correia foi medida com o motor ligado.",
         "A manutenção da correia foi feita com o motor ligado.",
         "A correia é tensionada com o motor ligado.",
+        "A correia e tensionada com o motor ligado.",
         "As correias são tensionadas com o motor ligado.",
         "A correia vai ser calibrada com o motor ligado.",
         "A correia deve ser calibrada com o motor ligado.",
         "Foi medida a tensão da correia com o motor ligado.",
         "Foi feita a manutenção da correia com o motor ligado.",
+        "A tensão é medida com o motor ligado.",
+        "A manutenção é feita com o motor ligado.",
+        (
+            "A correia está correta e deve ser calibrada "
+            "com o motor ligado."
+        ),
         "A correia está correta, mas quero limpar com o motor ligado.",
         (
             "Eu vou tensionar a correia com o motor ligado; "

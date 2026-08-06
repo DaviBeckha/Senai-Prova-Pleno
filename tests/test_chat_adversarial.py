@@ -636,6 +636,7 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         "A correia calibrada está adequada com o motor ligado?",
         "A correia limpa está adequada com o motor ligado?",
         "A correia solta está adequada com o motor ligado?",
+        "A correia está correta e calibrada com o motor ligado?",
     ),
 )
 def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
@@ -686,6 +687,10 @@ def test_novos_verbos_em_pergunta_conceitual_continuam_explicacao(question):
         "Qual o custo para trocar a correia com o motor ligado?",
         "A correia está correta, mas quero limpar com o motor ligado.",
         (
+            "A correia está correta e deve ser calibrada "
+            "com o motor ligado."
+        ),
+        (
             "Eu vou tensionar a correia com o motor ligado; "
             "ela está correta?"
         ),
@@ -696,6 +701,29 @@ def test_cue_factual_nao_neutraliza_acao_fisica_explicita(question):
 
     assert analysis.intent is ChatIntent.PROCEDURE
     assert analysis.requested_actions
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_action"),
+    (
+        (
+            "A tensão da correia é medida com o motor ligado.",
+            "inspect",
+        ),
+        (
+            "A manutenção da correia é feita com o motor ligado.",
+            "repair",
+        ),
+    ),
+)
+def test_voz_passiva_preserva_categoria_da_acao(
+    question,
+    expected_action,
+):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.requested_actions == (expected_action,)
 
 
 @pytest.mark.parametrize("verb", ("remover", "instalar"))
