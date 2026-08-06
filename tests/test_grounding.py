@@ -4,6 +4,7 @@ from app.chat.context import ChatContext
 from app.llm.contracts import GroundedDraft, GroundedStep
 from app.llm.grounding import (
     GroundingValidationError,
+    format_grounded_draft,
     parse_grounded_draft,
     validate_grounded_draft,
 )
@@ -162,16 +163,24 @@ def test_instrucao_sem_marcador_de_ausencia_em_unanswered_e_sinalizada():
     assert any("não declara ausência" in e for e in errors)
 
 
-def test_instrucao_com_marcador_de_ausencia_em_unanswered_e_sinalizada():
-    errors = validate_grounded_draft(
-        GroundedDraft(
-            steps=[_step()],
-            unanswered=["Mesmo sem evidência, aperte o parafuso até travar."],
-        ),
+@pytest.mark.parametrize("instruction", [
+    "Mesmo sem evidência, use um martelo e ligue a máquina.",
+    (
+        "A evidência não informa como ajustar a correia; mesmo assim, "
+        "aperte o parafuso até travar."
+    ),
+])
+def test_unanswered_livre_nunca_e_renderizado(instruction):
+    rendered = format_grounded_draft(
+        GroundedDraft(steps=[_step()], unanswered=[instruction]),
         FakeCtx(),
     )
 
-    assert any("ação escondida em limitação" in e for e in errors)
+    assert instruction not in rendered
+    assert "limitação informada pelo modelo" in rendered.lower()
+    assert "aperte" not in rendered.lower()
+    assert "martelo" not in rendered.lower()
+    assert "ligue" not in rendered.lower()
 
 
 def test_acao_mencionada_em_declaracao_explicita_de_ausencia_e_valida():
