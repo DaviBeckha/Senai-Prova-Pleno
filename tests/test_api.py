@@ -21,9 +21,16 @@ class FakePipeline:
 
     def diagnose(self, event, mode=None):
         self.last_mode = mode
-        return DiagnosisReport("diagnostico", "correia", "ajustar tensao",
-                               10, 1.5, ["Doc4.pdf"], "template", False,
-                               {"correia": 10}, 10)
+        # Construcao nomeada: o relatorio tem 14 campos e um novo no meio da
+        # lista deslocaria os posicionais seguintes sem erro de tipo.
+        return DiagnosisReport(
+            status="diagnostico", family="correia", message="ajustar tensao",
+            total_ocorrencias=10, freq_per_day=1.5, sources=["Doc4.pdf"],
+            renderer="template", degraded=False, family_votes={"correia": 10},
+            neighbor_count=10, first_seen="2026-06-01T00:00:00+00:00",
+            last_seen="2026-06-08T00:00:00+00:00", per_day={"2026-06-01": 10},
+            validation_errors=["passo 1: ação possui suporte lexical de 0.50"],
+        )
 
     def answer_question(self, pergunta, mode=None):
         self.last_mode = mode
@@ -80,9 +87,55 @@ def test_eventos_retorna_diagnostico():
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "diagnostico"
-    assert data["sources"] == ["Doc4.pdf"]
-    assert data["family_votes"] == {"correia": 10}
-    assert data["neighbor_count"] == 10
+    assert data["fontes"] == ["Doc4.pdf"]
+    assert data["votos_por_familia"] == {"correia": 10}
+    assert data["vizinhos_consultados"] == 10
+
+
+def test_eventos_contrato_em_portugues_sem_campos_em_ingles():
+    # O contrato HTTP e integralmente em portugues. Este teste falha se um
+    # campo em ingles voltar por descuido — a traducao acontece nas fabricas
+    # `de_relatorio` de app/api/schemas.py, e os relatorios internos
+    # (DiagnosisReport/ChatReport) seguem em ingles de proposito.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert set(data) == {
+        "status", "familia", "rotulo", "mensagem", "total_ocorrencias",
+        "frequencia_por_dia", "ocorrencias", "fontes", "redator", "degradado",
+        "erros_de_validacao", "votos_por_familia", "vizinhos_consultados",
+        "familias_candidatas", "participacao_maior_voto", "margem_votos",
+    }
+
+
+def test_eventos_expoe_rotulo_em_portugues_da_familia():
+    # O slug segue sendo a chave de dominio; o rotulo e o que a tela mostra.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert data["familia"] == "correia"
+    assert data["rotulo"] == "Correia"
+
+
+def test_eventos_expoe_janela_de_ocorrencias():
+    # occurrence_stats sempre calculou first_seen/last_seen/per_day e o
+    # contrato antigo descartava os tres: sem a janela, frequencia_por_dia nao
+    # diz sobre qual periodo a media foi medida.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert data["ocorrencias"]["primeira"] == "2026-06-01T00:00:00+00:00"
+    assert data["ocorrencias"]["ultima"] == "2026-06-08T00:00:00+00:00"
+    assert data["ocorrencias"]["por_dia"] == {"2026-06-01": 10}
+
+
+def test_eventos_expoe_erros_de_validacao():
+    # O motivo da rejeicao existia apenas no log do servidor: answer_question
+    # propagava outcome.validation_errors, diagnose() descartava. Sem ele na
+    # resposta, uma mensagem em template extrativo chega a tela indistinguivel
+    # de uma geracao aceita pelo grounding.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert data["erros_de_validacao"] == [
+        "passo 1: ação possui suporte lexical de 0.50"
+    ]
 
 
 def test_eventos_valida_campos():
@@ -121,9 +174,10 @@ def test_eventos_modo_invalido_retorna_422():
 
 
 def test_chat_fora_do_dominio():
-    # FakePipeline com answer_question que retorna undocumented (status real
-    # de app/chat/responses.py::undocumented_report — "sem_documento" e do
-    # DiagnosisReport de /eventos, um contrato diferente).
+    # O status interno "undocumented" (app/chat/responses.py::undocumented_report)
+    # sai no contrato HTTP como "sem_documento" — o MESMO termo que /eventos ja
+    # usava para a mesma ideia. A traducao no limite HTTP converge o vocabulario
+    # dos dois endpoints, que antes tinham nomes diferentes para o mesmo desfecho.
     class FakeChatPipeline(FakePipeline):
         def answer_question(self, pergunta, mode=None):
             return ChatReport(
@@ -137,7 +191,25 @@ def test_chat_fora_do_dominio():
     r = TestClient(app).post("/chat", json={"pergunta": "e a fase eletrica?"})
     data = r.json()
     assert "não documentado" in data["resposta"]
-    assert data["status"] == "undocumented"
+    assert data["status"] == "sem_documento"
+
+
+def test_chat_traduz_todos_os_status_internos_conhecidos():
+    # Teste de completude do mapa: um status novo no pipeline sem entrada em
+    # _STATUS_CHAT_PT atravessaria cru (o get tem fallback) e vazaria ingles
+    # para a tela. Aqui a lista conhecida e travada explicitamente.
+    from app.api.schemas import status_chat_pt
+
+    assert status_chat_pt("answered") == "respondido"
+    assert status_chat_pt("undocumented") == "sem_documento"
+    assert status_chat_pt("insufficient_evidence") == "evidencia_insuficiente"
+    assert status_chat_pt("refused_unsafe") == "recusado_seguranca"
+    assert status_chat_pt("refused_internal") == "recusado_interno"
+    assert status_chat_pt("needs_clarification") == "precisa_esclarecimento"
+    assert status_chat_pt("out_of_scope") == "fora_de_escopo"
+    assert status_chat_pt("state") == "estado"
+    assert status_chat_pt("documented") == "documentado"
+    assert status_chat_pt("partially_documented") == "parcialmente_documentado"
 
 
 def test_chat_expoe_contrato_completo():
@@ -162,16 +234,21 @@ def test_chat_expoe_contrato_completo():
     r = TestClient(app).post("/chat", json={"pergunta": "como corrigir correia?"})
     assert r.status_code == 200
     data = r.json()
-    assert data["status"] == "answered"
+    assert data["status"] == "respondido"
     assert data["resposta"] == (
         "- Ajustar tensão [Doc4.pdf — seção 9.1; evidência correia:E1]"
     )
-    assert data["families"] == ["correia"]
+    assert data["familias"] == ["correia"]
     assert data["fontes"] == ["Doc4.pdf"]
-    assert data["renderer"] == "ollama"
-    assert data["degraded"] is False
-    assert data["limitations"] == ["a evidência não cobre torque exato"]
-    assert data["validation_errors"] == []
+    assert data["redator"] == "ollama"
+    assert data["degradado"] is False
+    assert data["limitacoes"] == ["a evidência não cobre torque exato"]
+    assert data["erros_de_validacao"] == []
+    # Nenhum campo em ingles sobrando no contrato do /chat.
+    assert set(data) == {
+        "status", "resposta", "familias", "fontes", "redator", "degradado",
+        "limitacoes", "erros_de_validacao",
+    }
 
 
 def test_chat_expoe_validation_errors_quando_degradado():
@@ -195,8 +272,8 @@ def test_chat_expoe_validation_errors_quando_degradado():
     app.dependency_overrides[get_state] = lambda: state
     r = TestClient(app).post("/chat", json={"pergunta": "como corrigir correia?"})
     data = r.json()
-    assert data["degraded"] is True
-    assert data["validation_errors"] == [
+    assert data["degradado"] is True
+    assert data["erros_de_validacao"] == [
         "trecho sem referencia a nenhuma fonte recuperada"
     ]
 
@@ -287,10 +364,11 @@ def test_eventos_expoe_e_persiste_diagnostico_inconclusivo():
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "diagnostico_inconclusivo"
-    assert body["family"] is None
-    assert body["candidate_families"] == ["correia", "rolamento_ball"]
-    assert body["top_vote_share"] == 0.5
-    assert body["vote_margin"] == 0
+    assert body["familia"] is None
+    assert body["rotulo"] == "Diagnóstico inconclusivo"
+    assert body["familias_candidatas"] == ["correia", "rolamento_ball"]
+    assert body["participacao_maior_voto"] == 0.5
+    assert body["margem_votos"] == 0
     with factory() as session:
         event = session.scalar(select(Event))
         diagnosis = session.scalar(select(Diagnosis))
@@ -348,7 +426,7 @@ def test_documentos_extensao_nao_suportada():
         files={"file": ("documento.docx", b"conteudo fake",
                         "application/vnd.openxmlformats-officedocument"
                         ".wordprocessingml.document")},
-        data={"family": "ventoinha", "title": "Doc Fake"},
+        data={"familia": "ventoinha", "titulo": "Doc Fake"},
     )
     assert r.status_code == 422
     assert "extensão não suportada" in r.json()["detail"]
@@ -407,7 +485,7 @@ def test_documentos_salva_arquivo_persistente(tmp_path, monkeypatch):
         r = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r.status_code == 200
 
@@ -431,7 +509,7 @@ def test_documentos_arquivo_excede_10mb():
     r = client.post(
         "/documentos",
         files={"file": ("grande.md", conteudo_grande, "text/markdown")},
-        data={"family": "correia", "title": "Doc Grande"},
+        data={"familia": "correia", "titulo": "Doc Grande"},
     )
     assert r.status_code == 422
     assert "10 MB" in r.json()["detail"]
@@ -453,7 +531,7 @@ def test_documentos_ingestao_falha_remove_arquivo_orfao(tmp_path, monkeypatch):
             client.post(
                 "/documentos",
                 files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
-                data={"family": "correia", "title": "Doc X"},
+                data={"familia": "correia", "titulo": "Doc X"},
             )
         assert list(tmp_path.iterdir()) == []
     finally:
@@ -472,7 +550,7 @@ def test_documentos_family_com_path_traversal_e_rejeitada(tmp_path, monkeypatch)
         r = client.post(
             "/documentos",
             files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
-            data={"family": "../../../evil_escape_poc", "title": "Doc Malicioso"},
+            data={"familia": "../../../evil_escape_poc", "titulo": "Doc Malicioso"},
         )
         assert r.status_code == 422
         assert "família inválida" in r.json()["detail"]
@@ -492,7 +570,7 @@ def test_documentos_family_snake_case_valida_continua_aceita(tmp_path, monkeypat
         r = client.post(
             "/documentos",
             files={"file": ("Doc Rolamento.md", content, "text/markdown")},
-            data={"family": "rolamento_outer", "title": "Doc Rolamento"},
+            data={"familia": "rolamento_outer", "titulo": "Doc Rolamento"},
         )
         assert r.status_code == 200
         assert registry.registered[0][0] == "rolamento_outer"
@@ -515,7 +593,7 @@ def test_documentos_defesa_em_profundidade_bloqueia_escape_do_uploads_dir(tmp_pa
         r = client.post(
             "/documentos",
             files={"file": ("doc.md", b"conteudo qualquer", "text/markdown")},
-            data={"family": "correia", "title": "Doc X"},
+            data={"familia": "correia", "titulo": "Doc X"},
         )
         assert r.status_code == 422
         assert registry.registered == []
@@ -533,7 +611,7 @@ def test_documentos_filename_sem_extensao_retorna_422():
         "/documentos",
         files={"file": ("documento_sem_extensao", b"conteudo qualquer",
                         "application/octet-stream")},
-        data={"family": "correia", "title": "Doc Sem Extensao"},
+        data={"familia": "correia", "titulo": "Doc Sem Extensao"},
     )
     assert r.status_code == 422
     assert "extensão não suportada" in r.json()["detail"]
@@ -567,7 +645,7 @@ def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
 
@@ -575,7 +653,7 @@ def test_documentos_dedup_retorna_409_na_segunda_tentativa(tmp_path, monkeypatch
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
         assert "documento já cadastrado" in r2.json()["detail"]
@@ -593,7 +671,7 @@ def test_documentos_dedup_arquivo_nao_grava_quando_409(tmp_path, monkeypatch):
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
         files_after_first = list(tmp_path.iterdir())
@@ -604,7 +682,7 @@ def test_documentos_dedup_arquivo_nao_grava_quando_409(tmp_path, monkeypatch):
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
 
@@ -626,7 +704,7 @@ def test_documentos_dedup_chunks_nao_crescem_apos_409(tmp_path, monkeypatch):
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
         chunks_after_first = len(index.chunks_for_family("correia"))
@@ -636,7 +714,7 @@ def test_documentos_dedup_chunks_nao_crescem_apos_409(tmp_path, monkeypatch):
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
 
@@ -657,7 +735,7 @@ def test_documentos_dedup_titulo_normalizado_com_espacos(tmp_path, monkeypatch):
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": " Doc Teste "},
+            data={"familia": "correia", "titulo": " Doc Teste "},
         )
         assert r1.status_code == 200
 
@@ -665,7 +743,7 @@ def test_documentos_dedup_titulo_normalizado_com_espacos(tmp_path, monkeypatch):
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r2.status_code == 409
     finally:
@@ -682,7 +760,7 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Teste"},
+            data={"familia": "correia", "titulo": "Doc Teste"},
         )
         assert r1.status_code == 200
 
@@ -690,7 +768,7 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "doc teste"},
+            data={"familia": "correia", "titulo": "doc teste"},
         )
         assert r2.status_code == 409
     finally:
@@ -730,7 +808,7 @@ def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch)
         r1 = client.post(
             "/documentos",
             files={"file": ("Doc Teste.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Race"},
+            data={"familia": "correia", "titulo": "Doc Race"},
         )
         assert r1.status_code == 200
         assert len(list(tmp_path.iterdir())) == 1
@@ -738,7 +816,7 @@ def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch)
         r2 = client.post(
             "/documentos",
             files={"file": ("Doc Teste2.md", content, "text/markdown")},
-            data={"family": "correia", "title": "Doc Race"},
+            data={"familia": "correia", "titulo": "Doc Race"},
         )
         assert r2.status_code == 409
         assert "documento já cadastrado" in r2.json()["detail"]
@@ -751,7 +829,7 @@ def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch)
 
 def test_documentos_arquivo_vazio_retorna_422_e_nao_registra(tmp_path, monkeypatch):
     # Antes desta correcao: .md vazio ingeria 0 chunks e AINDA ASSIM
-    # registrava a familia como "documentada" (200 {"chunks": 0}) — todo
+    # registrava a familia como "documentada" (200 {"trechos_indexados": 0}) — todo
     # diagnostico subsequente da familia caia em contencao "sem trechos" e a
     # retentativa com o mesmo titulo tomava 409 em vez de poder corrigir o
     # upload. Documento sem conteudo utilizavel tem que ser rejeitado (422),
@@ -761,7 +839,7 @@ def test_documentos_arquivo_vazio_retorna_422_e_nao_registra(tmp_path, monkeypat
         r = client.post(
             "/documentos",
             files={"file": ("vazio.md", b"", "text/markdown")},
-            data={"family": "correia", "title": "Doc Vazio"},
+            data={"familia": "correia", "titulo": "Doc Vazio"},
         )
         assert r.status_code == 422
         assert "sem conteúdo utilizável" in r.json()["detail"]
@@ -781,7 +859,7 @@ def test_documentos_arquivo_so_whitespace_retorna_422_e_nao_registra(tmp_path, m
         r = client.post(
             "/documentos",
             files={"file": ("so_espacos.txt", b"\n\n   \n\t\n", "text/plain")},
-            data={"family": "correia", "title": "Doc So Espacos"},
+            data={"familia": "correia", "titulo": "Doc So Espacos"},
         )
         assert r.status_code == 422
         assert "sem conteúdo utilizável" in r.json()["detail"]
@@ -802,7 +880,7 @@ def test_documentos_encoding_invalido_retorna_422_mensagem_propria(tmp_path, mon
         r = client.post(
             "/documentos",
             files={"file": ("latin1.md", b"\xe9\xe1", "text/markdown")},
-            data={"family": "correia", "title": "Doc Latin1"},
+            data={"familia": "correia", "titulo": "Doc Latin1"},
         )
         assert r.status_code == 422
         assert "não está em UTF-8" in r.json()["detail"]

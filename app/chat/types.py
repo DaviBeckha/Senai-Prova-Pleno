@@ -30,6 +30,7 @@ class QuestionAnalysis:
     requested_actions: tuple[MaintenanceAction, ...] = ()
     conditions: frozenset[str] = frozenset()
     requires_safety: bool = False
+    safety_only: bool = False
 
     @property
     def needs_clarification(self) -> bool:

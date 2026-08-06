@@ -113,10 +113,10 @@ def test_reinicio_preserva_documentos_cadastrados_e_reindexados(tmp_path, monkey
             "/documentos",
             files={"file": ("ventoinha.md", _CONTEUDO_VENTOINHA.encode("utf-8"),
                             "text/markdown")},
-            data={"family": "ventoinha", "title": "Procedimento Ventoinha"},
+            data={"familia": "ventoinha", "titulo": "Procedimento Ventoinha"},
         )
         assert r.status_code == 200
-        assert r.json()["chunks"] > 0
+        assert r.json()["trechos_indexados"] > 0
 
         # Documento realmente foi parar em disco (uploads_dir), nao so em
         # memoria — pre-requisito para sobreviver ao "reinicio" abaixo.
@@ -190,7 +190,7 @@ def test_reidratacao_e_o_que_popula_o_indice_apos_reinicio(tmp_path, monkeypatch
             "/documentos",
             files={"file": ("ventoinha.md", _CONTEUDO_VENTOINHA.encode("utf-8"),
                             "text/markdown")},
-            data={"family": "ventoinha", "title": "Procedimento Ventoinha"},
+            data={"familia": "ventoinha", "titulo": "Procedimento Ventoinha"},
         )
         assert r.status_code == 200
 

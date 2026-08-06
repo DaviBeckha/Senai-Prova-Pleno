@@ -1,24 +1,29 @@
-# Imagem do dashboard (Streamlit) — consome a API via HTTP, nao acessa o
-# banco nem o RAG diretamente.
+# Imagem do dashboard (Streamlit) — cliente puro da API.
+#
+# Nao importa app/ nem scripts/, nao acessa o banco, o RAG ou o disco: todo dado
+# vem por HTTP. Antes, esta imagem copiava app/, scripts/ e o banner.xlsx de
+# 21 MB, porque dashboard/app.py importava app.data.labels (normalizacao de
+# rotulo) e scripts.simulator (montagem do payload) e lia o xlsx direto para
+# montar os graficos do historico. Essas tres responsabilidades passaram para a
+# API — GET /familias, GET /eventos/amostra e GET /historico/resumo — e a imagem
+# ficou so com o dashboard.
 FROM python:3.12-slim
 WORKDIR /srv
 
-# Dependencias primeiro para aproveitar cache de camada do Docker. Usa o
-# mesmo requirements.txt da API (streamlit/plotly ja incluidos ali).
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Dependencias primeiro para aproveitar cache de camada do Docker.
+#
+# requirements-dashboard.txt em vez do requirements.txt compartilhado: sem os
+# imports de app/, a interface precisa de streamlit, plotly e httpx. O
+# compartilhado trazia torch (>2 GB), sentence-transformers, faiss-cpu,
+# scikit-learn, sqlalchemy, psycopg e openpyxl, nenhum deles usado aqui.
+COPY requirements-dashboard.txt .
+RUN pip install --no-cache-dir -r requirements-dashboard.txt
 
-# dashboard/app.py importa app.data.labels (normalizacao de rotulo para o
-# grafico de historico) e scripts.simulator (build_payload do simulador de
-# eventos) — por isso app/ e scripts/ inteiros entram na imagem, nao so os
-# modulos usados hoje.
-COPY app/ app/
-COPY scripts/ scripts/
 COPY dashboard/ dashboard/
-
-# banner.xlsx: dashboard le direto (aba Historico) sem passar pela API.
-COPY banner.xlsx .
 
 EXPOSE 8501
 
+# O Streamlit poe o diretorio do script principal (/srv/dashboard) em sys.path —
+# e o que faz `import api` e `import estado` resolverem dentro das paginas, sem
+# nenhuma manipulacao de sys.path no codigo.
 CMD ["streamlit", "run", "dashboard/app.py", "--server.address", "0.0.0.0"]

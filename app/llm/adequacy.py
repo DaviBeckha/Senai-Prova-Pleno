@@ -6,6 +6,7 @@ from app.core.maintenance_intent import (
     ContentRole,
     MaintenanceAction,
     REPLACEMENT_CONDITIONS,
+    detect_actions,
     roles_for_action,
 )
 from app.llm.contracts import GroundedDraft
@@ -19,11 +20,27 @@ class AnswerAdequacyError(ValueError):
 
 def _effective_actions(
     actions: tuple[MaintenanceAction, ...],
-    requires_safety: bool,
+    safety_only: bool,
 ) -> tuple[MaintenanceAction, ...]:
-    if requires_safety and actions == (MaintenanceAction.INSPECT,):
+    if safety_only:
         return ()
     return actions
+
+
+def _action_satisfies(
+    requested: MaintenanceAction,
+    produced: tuple[MaintenanceAction, ...],
+) -> bool:
+    if requested is MaintenanceAction.REPAIR:
+        corrective = {
+            MaintenanceAction.ADJUST,
+            MaintenanceAction.ALIGN,
+            MaintenanceAction.LUBRICATE,
+            MaintenanceAction.REPAIR,
+            MaintenanceAction.REPLACE,
+        }
+        return any(action in corrective for action in produced)
+    return requested in produced
 
 
 def _allowed_roles(
@@ -57,7 +74,7 @@ def validate_evidence_adequacy(
     found = _items_by_family(bundle)
     actions = _effective_actions(
         analysis.requested_actions,
-        analysis.requires_safety,
+        analysis.safety_only,
     )
     errors: list[str] = []
     for family in analysis.explicit_families:
@@ -102,7 +119,7 @@ def validate_answer_adequacy(
     if not isinstance(ctx, ChatContext):
         return ()
 
-    actions = _effective_actions(ctx.requested_actions, ctx.requires_safety)
+    actions = _effective_actions(ctx.requested_actions, ctx.safety_only)
     items_by_step = [
         (step, _resolve_step_item(step, ctx))
         for step in draft.steps
@@ -126,7 +143,8 @@ def validate_answer_adequacy(
             allowed = _allowed_roles(action, ctx.conditions)
             if not any(
                 item.chunk.content_role in allowed
-                for _, item in family_steps
+                and _action_satisfies(action, detect_actions(step.action))
+                for step, item in family_steps
             ):
                 errors.append(
                     f"família {family}: resposta não executa ação {action.value}"

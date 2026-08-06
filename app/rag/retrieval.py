@@ -19,14 +19,31 @@ def _document_hits(index, family: str, analysis: QuestionAnalysis) -> list[Searc
     return rerank_hits(hits, analysis)
 
 
-def _first_role(
+def _role_block(
     hits: list[SearchHit],
     role: ContentRole,
-) -> SearchHit | None:
+) -> list[SearchHit]:
     candidates = [hit for hit in hits if hit.chunk.content_role == role]
     if not candidates:
-        return None
-    return min(candidates, key=lambda hit: hit.chunk.document_order)
+        return []
+    anchor = min(candidates, key=lambda hit: hit.chunk.document_order)
+    block_key = (
+        anchor.chunk.source,
+        anchor.chunk.section,
+        anchor.chunk.section_path,
+    )
+    return sorted(
+        (
+            hit
+            for hit in candidates
+            if (
+                hit.chunk.source,
+                hit.chunk.section,
+                hit.chunk.section_path,
+            ) == block_key
+        ),
+        key=lambda hit: hit.chunk.document_order,
+    )
 
 
 def _deduplicate(hits: list[SearchHit]) -> list[SearchHit]:
@@ -48,6 +65,8 @@ def _limit_complete(
     hits: list[SearchHit],
     max_chars: int,
 ) -> tuple[list[SearchHit], int]:
+    if max_chars <= 0:
+        return [], len(hits)
     selected: list[SearchHit] = []
     used_chars = 0
     for hit in hits:
@@ -91,24 +110,27 @@ def _retrieve_family(
         for action in analysis.requested_actions
     )
     safety = (
-        _first_role(document_hits, ContentRole.SAFETY)
+        _role_block(document_hits, ContentRole.SAFETY)
         if analysis.requires_safety or intervention
-        else None
+        else []
     )
     validation = (
-        _first_role(document_hits, ContentRole.VALIDATION)
+        _role_block(document_hits, ContentRole.VALIDATION)
         if intervention
-        else None
+        else []
     )
-    composed = _deduplicate([
-        *([safety] if safety is not None else []),
-        *procedure,
-        *([validation] if validation is not None else []),
-    ])
 
     omitted = 0
     if complete:
-        composed, omitted = _limit_complete(composed, complete_max_chars)
+        mandatory_chars = sum(
+            len(hit.chunk.text)
+            for hit in (*safety, *validation)
+        )
+        procedure, omitted = _limit_complete(
+            procedure,
+            complete_max_chars - mandatory_chars,
+        )
+    composed = _deduplicate([*safety, *procedure, *validation])
     items = tuple(
         EvidenceItem(
             f"{family}:E{position}",

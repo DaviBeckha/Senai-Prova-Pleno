@@ -49,13 +49,30 @@ Aguardar `{"status": "ok", "ready": true, ...}` — o bootstrap da API carrega o
 (166.796 linhas), ajusta o motor de similaridade, carrega o modelo de embeddings local e
 ingere os 6 documentos de procedimento. Abrir o dashboard em `http://localhost:8501`.
 
-### 2. Dashboard — aba Histórico
+### 2. Dashboard — página Histórico
+
+O dashboard é multipage (`st.navigation`, `dashboard/app.py`): cada página tem URL própria, então
+dá para abrir direto em `http://localhost:8501/historico`, `/diagnostico`, `/chat` ou
+`/documentos` — útil para pular direto ao ponto durante a entrevista, sem navegar pela interface.
 
 Mostrar o gráfico de ocorrências por família de falha e a série temporal de falhas ao longo do
-tempo (aba "Histórico" do dashboard, `dashboard/app.py`). Serve para situar o entrevistador
-nos dados reais antes de qualquer diagnóstico: quais famílias existem, quão desbalanceadas
-são, e como se distribuem no tempo — a mesma base usada pelo motor de similaridade e pelo
-cálculo de estatísticas de ocorrência.
+tempo (página "Histórico"). Serve para situar o entrevistador nos dados reais antes de qualquer
+diagnóstico: quais famílias existem, quão desbalanceadas são, e como se distribuem no tempo — a
+mesma base usada pelo motor de similaridade e pelo cálculo de estatísticas de ocorrência.
+
+Dois pontos que valem narrar aqui:
+
+- Os agregados vêm de `GET /historico/resumo`, do **mesmo** DataFrame que alimenta o kNN. O
+  dashboard não lê o `banner.xlsx`: é cliente puro da API, sem import de `app/` e sem acesso a
+  disco. Antes ele lia o arquivo e reaplicava `normalize_label`, o que permitia ao gráfico
+  divergir do corpus que o motor realmente usa.
+- Os rótulos das famílias são os nomes em português (`Rolamento — pista interna`, `Rotor
+  excêntrico`), vindos de `GET /familias`. Os identificadores internos seguem em inglês onde
+  precisam: são chave de domínio no banco, no filtro do RAG e na allowlist de upload.
+
+A sidebar acompanha todas as páginas com o estado da API (`GET /health` consultado antes de
+qualquer ação, não depois de uma falha), o seletor de modo do LLM e a cobertura documental
+resumida.
 
 ### 3. Evento de `correia` — diagnóstico completo, modo offline
 
@@ -69,10 +86,25 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8000/eventos `
   -ContentType "application/json" -Body $body
 ```
 
-Alternativa ao vivo no dashboard: aba "Diagnóstico & Chat", toggle de modo **desligado**
-(offline/Ollama), família `correia`, "Sortear evento aleatório da família" (sorteia outra
-linha real de `correia`, resultado equivalente, porém não determinístico). Narrar o que
-aparece na tela, mapeando para o fluxo do diagrama do README:
+Alternativa ao vivo no dashboard: página "Diagnóstico", toggle de modo da sidebar **desligado**
+(offline/Ollama), família "Correia", botão "Sortear e diagnosticar" (a linha vem de
+`GET /eventos/amostra`, outra ocorrência real de `correia` — resultado equivalente, porém não
+determinístico). Narrar o que aparece na tela, mapeando para o fluxo do diagrama do README.
+
+Vale destacar dois blocos que a tela agora mostra e que mudam a leitura do resultado:
+
+- **Suporte do voto kNN.** A API responde `status: "diagnostico"` tanto para um vencedor com 56%
+  dos votos quanto para um empate triplo com 18%. A página qualifica: empate no topo ou suporte
+  abaixo de 40% viram um aviso de classificação inconclusiva, com a distribuição completa em
+  gráfico. Numa avaliação local do modo offline, três repetições do payload de `correia`
+  elegeram a família com **9 de 50 votos, empatada com `rolamento_outer` e `rolamento_ball`** —
+  a versão anterior da tela resumia isso a "voto de 50 vizinhos mais próximos", que se lê como
+  conclusão firme.
+- **Origem do texto.** Se `degradado` vier `true`, a tela diz que a recomendação **não** foi
+  redigida pelo modelo, e o expander mostra os `erros_de_validacao` (ex.: `"passo 1: ação possui
+  suporte lexical de 0.40, abaixo de 0.60"`). Na mesma avaliação, 43,75% das gerações foram
+  rejeitadas pelo grounding e caíram em extração determinística — antes, indistinguível de uma
+  geração aceita.
 
 1. O evento sorteado (linha real do `banner.xlsx`) é enviado para `POST /eventos`.
 2. O motor de similaridade classifica a família dominante entre os 50 vizinhos mais próximos
@@ -126,8 +158,8 @@ padrão) — alternativa com o `curl.exe` nativo do Windows (não o alias do Pow
 ```powershell
 curl.exe -X POST http://localhost:8000/documentos `
   -F "file=@demo/procedimento_ventoinha_demo.md" `
-  -F "family=ventoinha" `
-  -F "title=Procedimento Ventoinha Demo"
+  -F "familia=ventoinha" `
+  -F "titulo=Procedimento Ventoinha Demo"
 ```
 
 Repetir a consulta de `demo/evento_ventoinha.json`: a resposta muda imediatamente de
@@ -150,7 +182,7 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8000/eventos `
   -ContentType "application/json" -Body $body
 ```
 
-Resultado esperado: continua `status: "diagnostico"` com `sources` apontando para o arquivo
+Resultado esperado: continua `status: "diagnostico"` com `fontes` apontando para o arquivo
 cadastrado no passo anterior — o cadastro não foi perdido no restart, ao contrário do índice
 em memória de uma implementação ingênua sem `DocumentRegistry`.
 
@@ -167,7 +199,8 @@ silenciosamente para o Ollama local e, na ausência deste, para o template deter
 
 ### 7. Reconhecimento de linguagem do operador (chat)
 
-Ainda na aba "Diagnóstico & Chat", usar o campo de pergunta livre. O ponto a demonstrar é que
+Na página "Chat", usar o campo de pergunta livre. A conversa fica no histórico da sessão, então
+dá para encadear várias perguntas e voltar a comparar as respostas. O ponto a demonstrar é que
 a interpretação acontece **antes** do RAG e do LLM, em código determinístico
 (`app/chat/analyzer.py`), e não como instrução de prompt:
 
@@ -250,7 +283,7 @@ liberação para executar com a máquina em funcionamento.
 ### 10. Engenharia: Swagger e histórico de migrations
 
 - Abrir `http://localhost:8000/docs` (Swagger/OpenAPI gerado automaticamente pelo
-  FastAPI) e mostrar os schemas de `EventIn`/`DiagnosisOut`/`ChatIn`/`ChatOut`.
+  FastAPI) e mostrar os schemas de `EventIn`/`DiagnosticoOut`/`ChatIn`/`ChatOut`.
 - Rodar `alembic history` (ou `docker exec` no container da API) para mostrar o schema do
   Postgres versionado por migration, não criado ad-hoc.
 
@@ -258,13 +291,13 @@ liberação para executar com a máquina em funcionamento.
 
 | Sintoma | O que fazer | Observação |
 |---|---|---|
-| Ollama cai/morre no meio da entrevista (`renderer` some do ar) | Repetir a consulta e mostrar `"degraded": true`, `"renderer": "template"` na resposta — **narrar isso como feature**, não pedir desculpa: a API continua respondendo 200 com evidência crua em vez de travar ou devolver 500. `tests/test_degradacao_ponta.py` prova esse caminho de ponta a ponta (Router real + `OllamaRenderer` real apontando para porta morta) | Ver seção 6 do roteiro (comparação de modos) e o teste de regressão citado |
+| Ollama cai/morre no meio da entrevista (`redator` some do ar) | Repetir a consulta e mostrar `"degradado": true`, `"redator": "template"` na resposta — **narrar isso como feature**, não pedir desculpa: a API continua respondendo 200 com evidência crua em vez de travar ou devolver 500. `tests/test_degradacao_ponta.py` prova esse caminho de ponta a ponta (Router real + `OllamaRenderer` real apontando para porta morta) | Ver seção 6 do roteiro (comparação de modos) e o teste de regressão citado |
 | Sem internet na sala da entrevista | Não é um problema: `LLM_MODE=offline` é o padrão do sistema (`.env.example`), todo o caminho principal (RAG + Ollama local + guardrail) roda sem rede. Só o passo 6 (modo online/OpenAI) fica indisponível — pular ou narrar apenas a degradação silenciosa para Ollama | Seção 6.3 do `README.md` documenta a variável |
-| `postgres` não fica `healthy` / API não inicializa | `docker compose logs postgres` (erro de inicialização, porta 5432 já em uso no host, volume corrompido) — reiniciar com `docker compose down` seguido de `docker compose up --build`; se a porta estiver ocupada, trocar o bind em um override local (nunca no `docker-compose.yml` versionado) | Ver seção 6.4 do `README.md` (portas publicadas só em `127.0.0.1`) |
+| API não inicializa por falha de conexão com o PostgreSQL | Confirmar que o banco da máquina host está ativo na porta da `DATABASE_URL`, que a URL usa `host.docker.internal` no Docker Desktop e que usuário, senha, firewall e `pg_hba.conf` permitem a conexão. Depois, reiniciar com `docker compose up --build` | Ver seções 6.1 e 6.4 do `README.md`; o compose não inicia um PostgreSQL alternativo |
 | `ollama` fica `unhealthy` por mais de alguns minutos | Conferir se o `ollama pull qwen2.5:7b-instruct` do passo 1 realmente rodou (`docker compose ps`, depois `docker exec -it <container> ollama list`) — sem o modelo baixado o healthcheck nunca passa, mas a API continua respondendo com o template (mesmo caso do primeiro sintoma) | Passo 1 deste roteiro |
 | Dashboard trava/demora em uma chamada | `DASHBOARD_TIMEOUT=330` (compose) dá margem para uma geração lenta em CPU; se estourar mesmo assim, repetir a chamada em modo offline com um payload de `demo/` em vez do sorteio aleatório, para eliminar variância de linha | `demo/README.md` |
-| Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (os volumes `pgdata` e `uploads` sobrevivem a um `docker compose down` sem `-v`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 (cadastro do documento) tomaria `409` (família já documentada) | **Reset seletivo pré-entrevista**: `docker compose down` seguido de `docker volume rm <projeto>_pgdata <projeto>_uploads` — conferir os nomes reais com `docker volume ls` (o prefixo é o nome do projeto Compose, por padrão o nome do diretório, ex. `senai-prova-pleno_pgdata`); **não** remover o volume `ollama` (evita repuxar alguns GB do modelo). Subir de novo com `docker compose up --build` e aceitar o reseed do `banner.xlsx` (~2 min) | Passo 5 deste roteiro |
-| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.gitignore`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | Ver a linha "`postgres` não fica `healthy`" desta mesma tabela — o mesmo tipo de override que remapeia a porta do Postgres pode remapear a da API |
+| Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (o registro persiste no PostgreSQL da máquina e o arquivo no volume `uploads`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 tomaria `409` | Para um ensaio limpo, use um banco dedicado de demonstração vazio e um volume `uploads` novo. Recrie ou limpe esse banco somente de forma intencional pela ferramenta administrativa do PostgreSQL; `docker compose down -v` não apaga o banco externo | Passo 5 deste roteiro |
+| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.gitignore`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | O override local pode remapear as portas da API e do dashboard sem alterar o compose versionado |
 
 ## Ensaio real (pendente — Docker indisponível nesta estação)
 
@@ -274,20 +307,21 @@ esta estação de trabalho não tem Docker instalado. Fica registrado aqui como 
 pendente, com os comandos prontos, para rodar antes da entrevista (ou na máquina da
 entrevista, como primeiro passo do ensaio):
 
-- [ ] **Cenário 1 — banco zerado** (mede o pior caso: seed completo do `banner.xlsx` +
+- [ ] **Cenário 1 — banco externo zerado** (mede o pior caso: seed completo do `banner.xlsx` +
   download do modelo de embeddings):
   ```powershell
-  docker compose down -v
+  # Preparar previamente um banco vazio e apontar DATABASE_URL para ele.
+  docker compose down
   Measure-Command { docker compose up --build -d }
   docker compose ps
   docker exec -it senai-prova-pleno-ollama-1 ollama pull qwen2.5:7b-instruct
   curl http://localhost:8000/health
   ```
-  Registrar o tempo até `docker compose ps` mostrar `api` e `postgres` `healthy` (esperado
+  Registrar o tempo até `docker compose ps` mostrar `api` `healthy` (esperado
   próximo dos ~126s de seed do xlsx documentados na seção 6.1 do `README.md`, mais o tempo de
   download do modelo de embeddings ~1 GB na primeira subida).
 
-- [ ] **Cenário 2 — banco populado** (volume do passo anterior preservado, sem `-v`):
+- [ ] **Cenário 2 — banco externo populado** (mesmo banco do passo anterior):
   ```powershell
   docker compose up --build -d
   Measure-Command { docker compose ps }
@@ -309,9 +343,9 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 
 | Critério | Onde é atendido |
 |---|---|
-| Arquitetura proposta para implantação do projeto | `README.md`, seção "Arquitetura e fluxo" (diagrama) e "Como rodar" (`docker-compose.yml`, `Dockerfile.api`, `Dockerfile.dashboard`) — Postgres, Ollama, API e dashboard como serviços independentes |
+| Arquitetura proposta para implantação do projeto | `README.md`, seção "Arquitetura e fluxo" (diagrama) e "Como rodar" (`docker-compose.yml`, `Dockerfile.api`, `Dockerfile.dashboard`) — PostgreSQL na máquina host, com Ollama, API e dashboard em containers independentes |
 | Organização do código | Separação por camada em `app/` (`api`, `core`, `data`, `similarity`, `rag`, `llm`, `guardrails`, `pipeline.py`) com contratos explícitos entre módulos (ver README, seção 2) |
-| Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degraded`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`); suíte automatizada versionada (195 testes + 2 xfailed documentados — ver README, "Como rodar os testes") validada em CI a cada push/PR (`.github/workflows/ci.yml`) |
+| Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degradado`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`); suíte automatizada versionada (195 testes + 2 xfailed documentados — ver README, "Como rodar os testes") validada em CI a cada push/PR (`.github/workflows/ci.yml`) |
 | Organização do repositório GitHub | Estrutura de diretórios documentada no README (seção 8); histórico de commits atômicos por etapa do pipeline; integração contínua no GitHub Actions |
 | Versionamento | Schema de banco versionado via Alembic, quatro migrations incrementais em `migrations/versions/` (`0001_initial.py`, `0002_sensor_readings.py`, `0003_diagnoses_event_fk.py`, `0004_documents_unique_family_title.py`); commits atômicos e descritivos |
 | Documentação | Este `docs/arquitetura.md` + `README.md` (visão geral, diagrama, decisões técnicas justificadas, como rodar, exemplos de request/response) |
@@ -325,7 +359,7 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 | Clareza na comunicação / organização da apresentação | Este roteiro de demonstração (passos 1-10) |
 | Justificativa das decisões técnicas adotadas | README, seção 3 ("Decisões técnicas e justificativas") — tabela com escolha e justificativa lado a lado para cada camada |
 | Capacidade de argumentação / domínio dos conceitos utilizados | README, seção 4 (desafios reais dos dados) e seção 5 (guardrail anti-alucinação, incluindo a decisão documentada sobre `eccentric_rotor`) |
-| Justificativa dos resultados obtidos / interpretação dos resultados | README, seção 4(d) — achado de que o voto kNN concorda com a família real em ~46% dos casos, e a decisão de expor `family_votes` em vez de esconder a incerteza |
+| Justificativa dos resultados obtidos / interpretação dos resultados | README, seção 4(d) — achado de que o voto kNN concorda com a família real em ~46% dos casos, e a decisão de expor `votos_por_familia` em vez de esconder a incerteza |
 | Demonstração com dados de teste | Passos 3-6 deste roteiro — payloads determinísticos de `demo/` (linhas reais de `banner.xlsx`, ver `demo/README.md`) como caminho oficial, com o sorteio ao vivo pelo dashboard como alternativa; nenhum caso fabricado |
 | Capacidade de extrair insights relevantes | README, seção 4 — os quatro desafios de dados (rótulos sujos, artefatos de datetime, PDF sem texto, sobreposição de famílias) foram descobertos e tratados durante a implementação, não hipotéticos |
 | Alucinação do modelo | README, seção 5 — guardrail com dois pontos de bloqueio estrutural (família sem documento; família documentada sem trecho recuperável), nenhum dos quais depende de instrução de prompt. Passo 4 deste roteiro demonstra ao vivo |
@@ -336,6 +370,6 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 |---|---|
 | APIs | `app/api/` — FastAPI com `/health`, `/eventos`, `/chat`, `/documentos`, Swagger automático |
 | Bancos de Dados | PostgreSQL 16 + SQLAlchemy 2.0 + Alembic (`app/data/`, `migrations/`) |
-| Dashboards | Streamlit multipage (`dashboard/app.py`) — histórico, chat de diagnóstico, registro de documentos |
-| Soluções de Deploy | `docker-compose.yml` orquestrando `postgres`, `ollama`, `api`, `dashboard` |
+| Dashboards | Streamlit multipage via `st.navigation` (`dashboard/app.py`) — quatro páginas com URL própria: Histórico, Diagnóstico, Chat e Documentos, mais sidebar global com estado da API, modo do LLM e cobertura documental. Cliente puro da API: sem import de `app/` e sem leitura do dataset em disco |
+| Soluções de Deploy | `docker-compose.yml` orquestrando `ollama`, `api` e `dashboard`, com conexão explícita ao PostgreSQL da máquina host |
 | Integrações em ambiente industrial | `scripts/simulator.py` — simula um gateway industrial publicando eventos reais do histórico na API em intervalo configurável |

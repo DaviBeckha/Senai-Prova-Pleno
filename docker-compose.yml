@@ -2,19 +2,6 @@
 # Para expor a outro host, troque o bind e proteja os serviços antes (ver
 # README, seção "Postura de segurança do protótipo").
 services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-senai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-senai}
-      POSTGRES_DB: ${POSTGRES_DB:-manutencao}
-    ports: ["127.0.0.1:5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-senai}"]
-      interval: 5s
-      retries: 10
-
   # Ollama local (modo offline / fallback do modo online sem OPENAI_API_KEY).
   #
   # CPU e o modo padrao oficial deste compose: sobe em qualquer maquina, sem
@@ -48,7 +35,9 @@ services:
   api:
     build: {context: ., dockerfile: Dockerfile.api}
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-senai}:${POSTGRES_PASSWORD:-senai}@postgres:5432/${POSTGRES_DB:-manutencao}
+      # Banco instalado na maquina host. No Docker Desktop, use
+      # host.docker.internal no lugar de localhost na URL do .env.
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL precisa estar definida no .env}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}
@@ -57,9 +46,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       UPLOADS_DIR: /srv/data_uploads
     ports: ["127.0.0.1:8000:8000"]
-    volumes: [uploads:/srv/data_uploads]
-    depends_on:
-      postgres: {condition: service_healthy}
+    # hf_cache: o modelo de embeddings e5 (~1 GB) e baixado em runtime pelo
+    # sentence-transformers no lifespan da app, para o cache padrao do
+    # HuggingFace. Sem este volume, todo `up --build` (ou qualquer recriacao do
+    # container) descarta o cache e refaz o download antes de a API ficar ready.
+    volumes: [uploads:/srv/data_uploads, hf_cache:/root/.cache/huggingface]
     # curl nao existe na imagem python:3.12-slim — usa o proprio python.
     # start_period generoso: o bootstrap baixa o modelo de embeddings e5
     # (~1 GB) na primeira subida.
@@ -79,6 +70,6 @@ services:
       api: {condition: service_started}
 
 volumes:
-  pgdata:
   ollama:
   uploads:
+  hf_cache:

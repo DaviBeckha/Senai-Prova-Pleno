@@ -52,6 +52,7 @@ def _ctx(question: str, bundle: RetrievalBundle) -> ChatContext:
         requested_actions=analysis.requested_actions,
         requires_safety=analysis.requires_safety,
         conditions=analysis.conditions,
+        safety_only=analysis.safety_only,
     )
 
 
@@ -129,6 +130,28 @@ def test_resposta_precisa_executar_o_verbo_solicitado():
         family="correia",
         evidence_id=diagnosis.evidence_id,
         quote=diagnosis.chunk.text,
+    )])
+
+    errors = validate_answer_adequacy(draft, ctx)
+
+    assert any("repair" in error for error in errors)
+
+
+def test_papel_do_chunk_nao_mascara_acao_fraca_na_resposta():
+    adjustment = _item(
+        "correia",
+        ContentRole.ADJUSTMENT,
+        "Verificar os parafusos antes de ajustar a tensão.",
+    )
+    ctx = _ctx(
+        "Como corrigir uma correia frouxa?",
+        _bundle(adjustment),
+    )
+    draft = GroundedDraft(steps=[GroundedStep(
+        action="Verificar os parafusos.",
+        family="correia",
+        evidence_id=adjustment.evidence_id,
+        quote=adjustment.chunk.text,
     )])
 
     errors = validate_answer_adequacy(draft, ctx)

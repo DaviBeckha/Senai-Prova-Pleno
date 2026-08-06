@@ -15,10 +15,7 @@ from app.rag.search import SearchHit
 def _effective_actions(
     analysis: QuestionAnalysis,
 ) -> tuple[MaintenanceAction, ...]:
-    if (
-        analysis.requires_safety
-        and analysis.requested_actions == (MaintenanceAction.INSPECT,)
-    ):
+    if analysis.safety_only:
         return ()
     return analysis.requested_actions
 
@@ -93,10 +90,28 @@ def select_procedure_hits(
         }
         if not replacement_is_allowed(analysis):
             requested_roles.discard(ContentRole.REPLACEMENT)
-        selected = [
+        matching = [
             hit for hit in ranked
             if hit.chunk.content_role in requested_roles
         ]
+        if complete:
+            return matching
+        selected: list[SearchHit] = []
+        for action in actions:
+            action_roles = set(roles_for_action(action))
+            if not replacement_is_allowed(analysis):
+                action_roles.discard(ContentRole.REPLACEMENT)
+            found = next(
+                (
+                    hit for hit in matching
+                    if hit.chunk.content_role in action_roles
+                    and hit not in selected
+                ),
+                None,
+            )
+            if found is not None:
+                selected.append(found)
+        selected.extend(hit for hit in matching if hit not in selected)
     elif analysis.requires_safety:
         selected = []
     else:

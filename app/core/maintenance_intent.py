@@ -70,7 +70,7 @@ _ACTION_PATTERNS = (
     (MaintenanceAction.LUBRICATE, re.compile(r"\b(?:lubrific\w*|relubrific\w*)\b")),
     (
         MaintenanceAction.REPLACE,
-        re.compile(r"\b(?:substitu\w*|troc\w*|troqu\w*)\b"),
+        re.compile(r"\b(?:substitu\w*|troc\w*|troqu\w*|remov\w*|instal\w*)\b"),
     ),
     (MaintenanceAction.VALIDATE, re.compile(r"\b(?:valid\w*|confirm\w*|test\w*)\b")),
     (
@@ -94,6 +94,9 @@ _CONDITION_PATTERNS = {
 _SAFETY_REQUEST = re.compile(
     r"\b(?:seguranca|deslig\w*|bloque\w*|etiquet\w*|"
     r"ausencia de energia|parada completa)\b"
+)
+_SAFETY_ONLY_REQUEST = re.compile(
+    r"\b(?:verificacoes?|medidas?|cuidados?) de seguranca\b"
 )
 
 
@@ -128,6 +131,14 @@ def detect_conditions(value: str) -> frozenset[str]:
 
 def is_safety_request(value: str) -> bool:
     return bool(_SAFETY_REQUEST.search(normalize_text(value)))
+
+
+def is_safety_only_request(value: str) -> bool:
+    normalized = normalize_text(value)
+    return bool(
+        _SAFETY_REQUEST.search(normalized)
+        and _SAFETY_ONLY_REQUEST.search(normalized)
+    )
 
 
 def roles_for_action(action: MaintenanceAction) -> frozenset[ContentRole]:

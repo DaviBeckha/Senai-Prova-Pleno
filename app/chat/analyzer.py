@@ -11,6 +11,7 @@ from app.data.labels import STATE_FAMILIES
 from app.core.maintenance_intent import (
     detect_actions,
     detect_conditions,
+    is_safety_only_request,
     is_safety_request,
 )
 
@@ -45,6 +46,7 @@ def analyze_question(question: str) -> QuestionAnalysis:
     requested_actions = detect_actions(normalized)
     conditions = detect_conditions(normalized)
     requires_safety = is_safety_request(normalized)
+    safety_only = is_safety_only_request(normalized)
     mentions = _ordered_family_mentions(normalized)
     explicit = _deduplicate(
         [family for family, _, negated in mentions if not negated]
@@ -68,6 +70,7 @@ def analyze_question(question: str) -> QuestionAnalysis:
             requested_actions=requested_actions,
             conditions=conditions,
             requires_safety=requires_safety,
+            safety_only=safety_only,
         )
     if explicit and any(phrase in normalized for phrase in HISTORY_PHRASES):
         return QuestionAnalysis(
@@ -80,6 +83,7 @@ def analyze_question(question: str) -> QuestionAnalysis:
             requested_actions=requested_actions,
             conditions=conditions,
             requires_safety=requires_safety,
+            safety_only=safety_only,
         )
     if explicit and all(family in STATE_FAMILIES for family in explicit):
         return QuestionAnalysis(
@@ -92,6 +96,7 @@ def analyze_question(question: str) -> QuestionAnalysis:
             requested_actions=requested_actions,
             conditions=conditions,
             requires_safety=requires_safety,
+            safety_only=safety_only,
         )
     if explicit:
         return QuestionAnalysis(
@@ -104,6 +109,7 @@ def analyze_question(question: str) -> QuestionAnalysis:
             requested_actions=requested_actions,
             conditions=conditions,
             requires_safety=requires_safety,
+            safety_only=safety_only,
         )
     candidates = _symptom_candidates(normalized)
     if candidates:
@@ -117,6 +123,7 @@ def analyze_question(question: str) -> QuestionAnalysis:
             requested_actions=requested_actions,
             conditions=conditions,
             requires_safety=requires_safety,
+            safety_only=safety_only,
         )
     return QuestionAnalysis(
         question,
@@ -127,4 +134,5 @@ def analyze_question(question: str) -> QuestionAnalysis:
         requested_actions=requested_actions,
         conditions=conditions,
         requires_safety=requires_safety,
+        safety_only=safety_only,
     )

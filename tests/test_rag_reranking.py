@@ -33,6 +33,11 @@ class LayeredFakeIndex:
             ContentRole.ADJUSTMENT,
             9,
         )
+        self.inspection = _chunk(
+            "Inspecionar a correia, os parafusos e as polias.",
+            ContentRole.INSPECTION,
+            8,
+        )
         self.safety = _chunk(
             "Desligar, bloquear, confirmar ausência de energia e aguardar parada completa.",
             ContentRole.SAFETY,
@@ -51,6 +56,7 @@ class LayeredFakeIndex:
         self._all = (
             self.general,
             self.safety,
+            self.inspection,
             self.adjustment,
             self.replacement,
             self.validation,
@@ -60,6 +66,7 @@ class LayeredFakeIndex:
         ranked_by_vector_only = (
             SearchHit(self.replacement, 0.95),
             SearchHit(self.general, 0.92),
+            SearchHit(self.inspection, 0.88),
             SearchHit(self.adjustment, 0.84),
             SearchHit(self.validation, 0.80),
             SearchHit(self.safety, 0.75),
@@ -120,6 +127,78 @@ def test_pergunta_de_seguranca_forca_bloco_completo_de_seguranca():
     )
     assert "ausência de energia" in safety.chunk.text
     assert "parada completa" in safety.chunk.text
+
+
+def test_inspecao_com_seguranca_recupera_seguranca_e_inspecao():
+    bundle = _retrieve("Como inspecionar a correia com segurança?")
+
+    roles = [item.chunk.content_role for item in bundle.items]
+    assert ContentRole.SAFETY in roles
+    assert ContentRole.INSPECTION in roles
+
+
+def test_todos_os_fragmentos_do_bloco_de_seguranca_sao_compostos():
+    index = LayeredFakeIndex()
+    safety_a = _chunk(
+        "Desligar o equipamento e aplicar bloqueio.",
+        ContentRole.SAFETY,
+        7,
+    )
+    safety_b = _chunk(
+        "Confirmar ausência de energia e aguardar parada completa.",
+        ContentRole.SAFETY,
+        8,
+    )
+    safety_b.section = safety_a.section
+    safety_b.section_path = safety_a.section_path
+    index._all = (safety_a, safety_b, index.adjustment, index.validation)
+    analysis = analyze_question(
+        "Quais verificacoes de seguranca devem ser feitas antes de mexer na correia?"
+    )
+
+    bundle = retrieve_evidence(
+        index,
+        analysis.original,
+        analysis.explicit_families,
+        analysis,
+        k=4,
+        min_score=0.0,
+        complete_max_chars=12_000,
+    )
+
+    safety_texts = [
+        item.chunk.text
+        for item in bundle.items
+        if item.chunk.content_role is ContentRole.SAFETY
+    ]
+    assert len(safety_texts) == 2
+    assert any("bloqueio" in text for text in safety_texts)
+    assert any("parada completa" in text for text in safety_texts)
+
+
+def test_multiplas_acoes_reservam_evidencia_para_cada_uma():
+    index = LayeredFakeIndex()
+    index._all = (
+        *(
+            _chunk(f"Inspecionar item {position}.", ContentRole.INSPECTION, position)
+            for position in range(4)
+        ),
+        index.replacement,
+    )
+    analysis = analyze_question("Como inspecionar e trocar a correia?")
+
+    bundle = retrieve_evidence(
+        index,
+        analysis.original,
+        analysis.explicit_families,
+        analysis,
+        k=4,
+        min_score=0.0,
+        complete_max_chars=12_000,
+    )
+
+    roles = {item.chunk.content_role for item in bundle.items}
+    assert roles == {ContentRole.INSPECTION, ContentRole.REPLACEMENT}
 
 
 def test_procedimento_completo_nao_devolve_bloco_geral_irrelevante():

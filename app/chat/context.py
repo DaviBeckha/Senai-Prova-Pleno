@@ -23,3 +23,4 @@ class ChatContext:
     requested_actions: tuple[MaintenanceAction, ...] = ()
     requires_safety: bool = False
     conditions: frozenset[str] = frozenset()
+    safety_only: bool = False
