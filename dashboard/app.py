@@ -19,7 +19,6 @@ import estado
 
 st.set_page_config(
     page_title="Manutenção Prescritiva SENAI",
-    page_icon="🔧",
     layout="wide",
 )
 
@@ -34,11 +33,11 @@ def _sidebar_estado_da_api() -> None:
     try:
         saude = estado.carregar_saude()
     except api.ErroDeApi as erro:
-        st.sidebar.error(str(erro), icon="⚠️")
+        st.sidebar.error(str(erro))
         return
 
     if saude.get("ready"):
-        st.sidebar.success("API pronta", icon="✅")
+        st.sidebar.success("API pronta")
     else:
         # ready=False e estado esperado durante o primeiro boot, nao erro: o
         # bootstrap carrega o historico, ajusta o kNN e baixa ~1 GB de modelo

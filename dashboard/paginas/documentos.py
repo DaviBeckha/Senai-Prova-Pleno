@@ -22,7 +22,7 @@ try:
     familias = estado.carregar_familias()
     documentos = estado.carregar_documentos()
 except api.ErroDeApi as erro:
-    st.error(str(erro), icon="⚠️")
+    st.error(str(erro))
     st.stop()
 
 documentadas, total = familias.cobertura()
@@ -44,10 +44,9 @@ if descobertas:
         "**Sem documento orientativo:** "
         + ", ".join(item["rotulo"] for item in descobertas)
         + ". Eventos destas famílias vão terminar em contenção.",
-        icon="📄",
     )
 else:
-    st.success("Todas as famílias de falha têm documento cadastrado.", icon="✅")
+    st.success("Todas as famílias de falha têm documento cadastrado.")
 
 st.divider()
 
@@ -58,7 +57,6 @@ if not documentos:
     st.info(
         "Nenhum documento cadastrado. Se a API acabou de subir com banco novo, "
         "o bootstrap registra os documentos padrão — recarregue em instantes.",
-        icon="📭",
     )
 else:
     st.dataframe(
@@ -115,7 +113,7 @@ if enviar:
     if not arquivo or not titulo.strip():
         # Validacao antes da chamada: um 422 do servidor por campo vazio seria
         # uma ida a rede para dizer o que a tela ja sabe.
-        st.error("Informe o título e selecione o arquivo.", icon="✍️")
+        st.error("Informe o título e selecione o arquivo.")
     else:
         try:
             with st.spinner("Enviando e indexando os trechos…"):
@@ -129,7 +127,6 @@ if enviar:
                 f"Documento registrado para **{familias.rotulo(familia_escolhida)}**: "
                 f"{resultado['trechos_indexados']} trecho(s) indexado(s). "
                 "A família passa a receber recomendação.",
-                icon="✅",
             )
             st.rerun()
         except api.ApiRecusou as erro:
@@ -141,9 +138,8 @@ if enviar:
                     f"Já existe documento com o título “{titulo.strip()}” para "
                     f"{familias.rotulo(familia_escolhida)}. Use outro título ou "
                     "confira a lista acima.",
-                    icon="🔁",
                 )
             else:
-                st.error(erro.detalhe, icon="⚠️")
+                st.error(erro.detalhe)
         except api.ErroDeApi as erro:
-            st.error(str(erro), icon="⚠️")
+            st.error(str(erro))

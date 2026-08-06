@@ -30,12 +30,12 @@ st.title("Diagnóstico de evento")
 try:
     familias = estado.carregar_familias()
 except api.ErroDeApi as erro:
-    st.error(str(erro), icon="⚠️")
+    st.error(str(erro))
     st.stop()
 
 falhas = familias.falhas()
 if not falhas:
-    st.error("Vocabulário de famílias vazio — a API não está pronta.", icon="⚠️")
+    st.error("Vocabulário de famílias vazio — a API não está pronta.")
     st.stop()
 
 col_familia, col_acao = st.columns([3, 1], vertical_alignment="bottom")
@@ -57,7 +57,6 @@ if not familias.documentado(escolhida):
         f"**{familias.rotulo(escolhida)}** não tem documento orientativo "
         "cadastrado. O diagnóstico vai reconhecer a falha e se conter, sem "
         "recomendar ação — é o comportamento esperado, não uma falha do sistema.",
-        icon="📄",
     )
 
 if sortear:
@@ -71,7 +70,7 @@ if sortear:
         estado.guardar_diagnostico(resposta, amostra)
     except api.ErroDeApi as erro:
         estado.limpar_diagnostico()
-        st.error(str(erro), icon="⚠️")
+        st.error(str(erro))
 
 resposta, amostra = estado.diagnostico()
 if resposta is None:
@@ -111,7 +110,7 @@ col3.metric("Ocorrências no histórico",
                  f"{formato.periodo(resposta['ocorrencias']['primeira'], resposta['ocorrencias']['ultima'])}.")
 
 if certeza and certeza.inconclusiva:
-    st.warning(certeza.motivo(familias.rotulo), icon="⚖️")
+    st.warning(certeza.motivo(familias.rotulo))
 
 # --- Rotulo real x diagnostico -------------------------------------------
 
@@ -120,14 +119,14 @@ if amostra:
     concordam = familia_real == resposta["familia"]
     veredito = ("Diagnóstico coincide com o rótulo real."
                 if concordam else "Diagnóstico divergiu do rótulo real.")
-    # Icone + texto, nunca so cor: a conclusao tem de ser legivel sem depender
-    # de distinguir verde de vermelho.
+    # O veredito e afirmado por extenso na primeira linha, nunca so pela cor da
+    # caixa: a conclusao tem de ser legivel sem depender de distinguir verde de
+    # vermelho.
     (st.success if concordam else st.error)(
         f"**{veredito}**  \n"
         f"Rótulo real da leitura: `{amostra['rotulo_original']}` "
         f"→ {familias.rotulo(familia_real)}  \n"
         f"Diagnóstico: {resposta['rotulo']}",
-        icon="✅" if concordam else "❌",
     )
     if amostra["features_substituidas"]:
         colunas = ", ".join(f"`{c}`" for c in amostra["features_substituidas"])
@@ -148,7 +147,6 @@ if resposta["degradado"]:
         "validação de fundamentação e o sistema caiu para extração "
         "determinística dos trechos recuperados. Trate como evidência bruta, "
         "não como orientação redigida.",
-        icon="🛟",
     )
 
 mensagem = resposta["mensagem"]

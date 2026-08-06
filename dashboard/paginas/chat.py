@@ -18,7 +18,7 @@ st.title("Chat de manutenção")
 try:
     familias = estado.carregar_familias()
 except api.ErroDeApi as erro:
-    st.error(str(erro), icon="⚠️")
+    st.error(str(erro))
     st.stop()
 
 col_intro, col_limpar = st.columns([4, 1], vertical_alignment="bottom")
@@ -60,13 +60,11 @@ def _mostrar_resposta(resposta: dict) -> None:
                 "**Geração rejeitada pela validação de fundamentação.** O modelo "
                 "respondeu, mas o texto não teve suporte suficiente nos trechos "
                 "citados; o que aparece acima é extração determinística.",
-                icon="🛟",
             )
         else:
             st.warning(
                 "**Modelo indisponível.** A resposta acima vem de extração "
                 "determinística dos trechos recuperados, não de geração.",
-                icon="🔌",
             )
 
     if resposta["erros_de_validacao"]:
@@ -97,7 +95,7 @@ for mensagem in estado.mensagens():
         if "texto" in mensagem:
             st.markdown(mensagem["texto"])
         elif "erro" in mensagem:
-            st.error(mensagem["erro"], icon="⚠️")
+            st.error(mensagem["erro"])
         else:
             _mostrar_resposta(mensagem["resposta"])
 
@@ -118,7 +116,7 @@ if pergunta:
             _mostrar_resposta(resposta)
         except api.ErroDeApi as erro:
             estado.registrar_erro(str(erro))
-            st.error(str(erro), icon="⚠️")
+            st.error(str(erro))
 
 if not estado.mensagens():
     st.caption("Sugestões:")

@@ -24,7 +24,7 @@ try:
     resumo = estado.carregar_historico()
     familias = estado.carregar_familias()
 except api.ErroDeApi as erro:
-    st.error(str(erro), icon="⚠️")
+    st.error(str(erro))
     st.stop()
 
 por_familia = resumo["por_familia"]
@@ -36,7 +36,6 @@ if not por_familia:
     st.info(
         "Nenhuma leitura no histórico. Semeie a tabela `sensor_readings` "
         "(primeiro boot da API com `DATA_FILE` apontando para o dataset).",
-        icon="📭",
     )
     st.stop()
 
@@ -110,7 +109,7 @@ selecionadas = st.multiselect(
 )
 
 if not selecionadas:
-    st.info("Selecione ao menos uma família para ver a série temporal.", icon="👆")
+    st.info("Selecione ao menos uma família para ver a série temporal.")
 else:
     dias_por_familia = [
         item for item in resumo["por_dia"] if item["familia"] in set(selecionadas)
