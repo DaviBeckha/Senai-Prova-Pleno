@@ -254,11 +254,11 @@ liberação para executar com a máquina em funcionamento.
 |---|---|---|
 | Ollama cai/morre no meio da entrevista (`renderer` some do ar) | Repetir a consulta e mostrar `"degraded": true`, `"renderer": "template"` na resposta — **narrar isso como feature**, não pedir desculpa: a API continua respondendo 200 com evidência crua em vez de travar ou devolver 500. `tests/test_degradacao_ponta.py` prova esse caminho de ponta a ponta (Router real + `OllamaRenderer` real apontando para porta morta) | Ver seção 6 do roteiro (comparação de modos) e o teste de regressão citado |
 | Sem internet na sala da entrevista | Não é um problema: `LLM_MODE=offline` é o padrão do sistema (`.env.example`), todo o caminho principal (RAG + Ollama local + guardrail) roda sem rede. Só o passo 6 (modo online/OpenAI) fica indisponível — pular ou narrar apenas a degradação silenciosa para Ollama | Seção 6.3 do `README.md` documenta a variável |
-| `postgres` não fica `healthy` / API não inicializa | `docker compose logs postgres` (erro de inicialização, porta 5432 já em uso no host, volume corrompido) — reiniciar com `docker compose down` seguido de `docker compose up --build`; se a porta estiver ocupada, trocar o bind em um override local (nunca no `docker-compose.yml` versionado) | Ver seção 6.4 do `README.md` (portas publicadas só em `127.0.0.1`) |
+| API não inicializa por falha de conexão com o PostgreSQL | Confirmar que o banco da máquina host está ativo na porta da `DATABASE_URL`, que a URL usa `host.docker.internal` no Docker Desktop e que usuário, senha, firewall e `pg_hba.conf` permitem a conexão. Depois, reiniciar com `docker compose up --build` | Ver seções 6.1 e 6.4 do `README.md`; o compose não inicia um PostgreSQL alternativo |
 | `ollama` fica `unhealthy` por mais de alguns minutos | Conferir se o `ollama pull qwen2.5:7b-instruct` do passo 1 realmente rodou (`docker compose ps`, depois `docker exec -it <container> ollama list`) — sem o modelo baixado o healthcheck nunca passa, mas a API continua respondendo com o template (mesmo caso do primeiro sintoma) | Passo 1 deste roteiro |
 | Dashboard trava/demora em uma chamada | `DASHBOARD_TIMEOUT=330` (compose) dá margem para uma geração lenta em CPU; se estourar mesmo assim, repetir a chamada em modo offline com um payload de `demo/` em vez do sorteio aleatório, para eliminar variância de linha | `demo/README.md` |
-| Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (os volumes `pgdata` e `uploads` sobrevivem a um `docker compose down` sem `-v`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 (cadastro do documento) tomaria `409` (família já documentada) | **Reset seletivo pré-entrevista**: `docker compose down` seguido de `docker volume rm <projeto>_pgdata <projeto>_uploads` — conferir os nomes reais com `docker volume ls` (o prefixo é o nome do projeto Compose, por padrão o nome do diretório, ex. `senai-prova-pleno_pgdata`); **não** remover o volume `ollama` (evita repuxar alguns GB do modelo). Subir de novo com `docker compose up --build` e aceitar o reseed do `banner.xlsx` (~2 min) | Passo 5 deste roteiro |
-| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.gitignore`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | Ver a linha "`postgres` não fica `healthy`" desta mesma tabela — o mesmo tipo de override que remapeia a porta do Postgres pode remapear a da API |
+| Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (o registro persiste no PostgreSQL da máquina e o arquivo no volume `uploads`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 tomaria `409` | Para um ensaio limpo, use um banco dedicado de demonstração vazio e um volume `uploads` novo. Recrie ou limpe esse banco somente de forma intencional pela ferramenta administrativa do PostgreSQL; `docker compose down -v` não apaga o banco externo | Passo 5 deste roteiro |
+| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.gitignore`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | O override local pode remapear as portas da API e do dashboard sem alterar o compose versionado |
 
 ## Ensaio real (pendente — Docker indisponível nesta estação)
 
@@ -268,20 +268,21 @@ esta estação de trabalho não tem Docker instalado. Fica registrado aqui como 
 pendente, com os comandos prontos, para rodar antes da entrevista (ou na máquina da
 entrevista, como primeiro passo do ensaio):
 
-- [ ] **Cenário 1 — banco zerado** (mede o pior caso: seed completo do `banner.xlsx` +
+- [ ] **Cenário 1 — banco externo zerado** (mede o pior caso: seed completo do `banner.xlsx` +
   download do modelo de embeddings):
   ```powershell
-  docker compose down -v
+  # Preparar previamente um banco vazio e apontar DATABASE_URL para ele.
+  docker compose down
   Measure-Command { docker compose up --build -d }
   docker compose ps
   docker exec -it senai-prova-pleno-ollama-1 ollama pull qwen2.5:7b-instruct
   curl http://localhost:8000/health
   ```
-  Registrar o tempo até `docker compose ps` mostrar `api` e `postgres` `healthy` (esperado
+  Registrar o tempo até `docker compose ps` mostrar `api` `healthy` (esperado
   próximo dos ~126s de seed do xlsx documentados na seção 6.1 do `README.md`, mais o tempo de
   download do modelo de embeddings ~1 GB na primeira subida).
 
-- [ ] **Cenário 2 — banco populado** (volume do passo anterior preservado, sem `-v`):
+- [ ] **Cenário 2 — banco externo populado** (mesmo banco do passo anterior):
   ```powershell
   docker compose up --build -d
   Measure-Command { docker compose ps }
@@ -303,7 +304,7 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 
 | Critério | Onde é atendido |
 |---|---|
-| Arquitetura proposta para implantação do projeto | `README.md`, seção "Arquitetura e fluxo" (diagrama) e "Como rodar" (`docker-compose.yml`, `Dockerfile.api`, `Dockerfile.dashboard`) — Postgres, Ollama, API e dashboard como serviços independentes |
+| Arquitetura proposta para implantação do projeto | `README.md`, seção "Arquitetura e fluxo" (diagrama) e "Como rodar" (`docker-compose.yml`, `Dockerfile.api`, `Dockerfile.dashboard`) — PostgreSQL na máquina host, com Ollama, API e dashboard em containers independentes |
 | Organização do código | Separação por camada em `app/` (`api`, `core`, `data`, `similarity`, `rag`, `llm`, `guardrails`, `pipeline.py`) com contratos explícitos entre módulos (ver README, seção 2) |
 | Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degraded`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`); suíte automatizada versionada (195 testes + 2 xfailed documentados — ver README, "Como rodar os testes") validada em CI a cada push/PR (`.github/workflows/ci.yml`) |
 | Organização do repositório GitHub | Estrutura de diretórios documentada no README (seção 8); histórico de commits atômicos por etapa do pipeline; integração contínua no GitHub Actions |
@@ -331,5 +332,5 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 | APIs | `app/api/` — FastAPI com `/health`, `/eventos`, `/chat`, `/documentos`, Swagger automático |
 | Bancos de Dados | PostgreSQL 16 + SQLAlchemy 2.0 + Alembic (`app/data/`, `migrations/`) |
 | Dashboards | Streamlit multipage (`dashboard/app.py`) — histórico, chat de diagnóstico, registro de documentos |
-| Soluções de Deploy | `docker-compose.yml` orquestrando `postgres`, `ollama`, `api`, `dashboard` |
+| Soluções de Deploy | `docker-compose.yml` orquestrando `ollama`, `api` e `dashboard`, com conexão explícita ao PostgreSQL da máquina host |
 | Integrações em ambiente industrial | `scripts/simulator.py` — simula um gateway industrial publicando eventos reais do histórico na API em intervalo configurável |

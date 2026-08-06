@@ -91,7 +91,7 @@ Contratos entre camadas (independência deliberada):
 | LLM — modo online (opcional) | OpenAI `gpt-5.6-luna` via Responses API | Redação de melhor qualidade quando há conectividade; custo por resposta desprezível; **selecionável por requisição** (campo `modo`), não fixo por processo |
 | Fallback | Template determinístico (`TemplateRenderer`, sem LLM) | O sistema nunca fica sem resposta: cobre indisponibilidade do Ollama local ou falha/ausência de chave da OpenAI. Toda resposta degradada é sinalizada com `degraded: true` |
 | Dashboard | Streamlit multipage (3 abas) | Diferencial "Dashboards"; ferramenta explicitamente aceita pelo enunciado da prova; rápido de construir sem sacrificar interatividade |
-| Deploy | Docker + docker-compose (`postgres`, `ollama`, `api`, `dashboard`) | Diferencial "Soluções de Deploy"; sobe o ambiente completo com um único comando |
+| Deploy | Docker + docker-compose (`ollama`, `api`, `dashboard`) conectado ao PostgreSQL da máquina host | Diferencial "Soluções de Deploy"; containeriza a aplicação sem duplicar o banco local |
 | Integração industrial | Script simulador de eventos (`scripts/simulator.py`) publicando no `/eventos` em intervalo configurável | Diferencial "Integrações em ambiente industrial" com custo de implementação mínimo — simula um gateway industrial publicando leituras de sensor |
 
 ### Restrição de hardware e como o modo offline a atende
@@ -331,27 +331,39 @@ reiniciar a aplicação.
 
 ### 6.1 Docker Compose (recomendado)
 
+O compose usa exclusivamente um PostgreSQL instalado na máquina host. Antes de
+subir os containers, copie `.env.example` para `.env` e defina `DATABASE_URL`.
+No Docker Desktop, use `host.docker.internal` como host da conexão — `localhost`
+dentro do container apontaria para o próprio container da API. O banco precisa
+existir e aceitar conexões na porta configurada; o Alembic cria e atualiza as
+tabelas, mas não cria o banco PostgreSQL.
+
 ```powershell
-# 1. Validar a sintaxe do compose
+# 1. Criar o .env e configurar a conexão com o banco da máquina host
+copy .env.example .env
+# Exemplo:
+# DATABASE_URL=postgresql+psycopg://usuario:senha@host.docker.internal:5433/senai
+
+# 2. Validar a sintaxe do compose
 docker compose config
 
-# 2. Subir tudo: Postgres, Ollama, API (aplica as migrations Alembic no start) e dashboard
+# 3. Subir Ollama, API (aplica as migrations Alembic no start) e dashboard
 docker compose up --build
 
-# 3. Baixar o modelo local dentro do container Ollama (o volume começa vazio)
+# 4. Baixar o modelo local dentro do container Ollama (o volume começa vazio)
 docker exec -it senai-prova-pleno-ollama-1 ollama pull qwen2.5:7b-instruct
 # (o nome exato do container pode variar — conferir com `docker compose ps`)
 
-# 4. Acompanhar o bootstrap da API (kNN, embeddings e índice FAISS sobem em
-#    memória no lifespan da aplicação). Com um volume de Postgres novo, esse
-#    primeiro boot também semeia a tabela sensor_readings a partir do
+# 5. Acompanhar o bootstrap da API (kNN, embeddings e índice FAISS sobem em
+#    memória no lifespan da aplicação). Com a tabela sensor_readings vazia,
+#    o primeiro boot também a semeia a partir do
 #    banner.xlsx (~2 min, medido em ~126s para 166.796 linhas); nos boots
 #    seguintes o dataset já está no banco e essa etapa cai para poucos
 #    segundos — o tempo total do bootstrap nesse caso é dominado pelo
 #    carregamento do modelo de embeddings, não mais pelo dataset.
 curl http://localhost:8000/health
 
-# 5. Abrir o dashboard
+# 6. Abrir o dashboard
 # http://localhost:8501
 ```
 
@@ -370,7 +382,7 @@ quando há GPU NVIDIA disponível:
    shell antes de subir o compose) — o serviço `api` já lê essa variável do ambiente
    (`OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}` em `docker-compose.yml`, mesmo
    padrão das demais variáveis do bloco). Depois, subir sem o serviço `ollama` do compose
-   (`docker compose up --build api dashboard postgres`).
+   (`docker compose up --build api dashboard`).
 
 ### 6.2 Execução local (sem Docker)
 
@@ -382,7 +394,6 @@ venv\Scripts\activate
 pip install -r requirements.txt
 
 # Copiar .env.example para .env e ajustar DATABASE_URL para um Postgres local
-# (ou subir só o serviço postgres do compose: docker compose up postgres -d)
 copy .env.example .env
 
 # Aplicar as migrations
@@ -405,7 +416,7 @@ python -m scripts.simulator --n 10 --intervalo 3
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `DATABASE_URL` | `postgresql+psycopg://senai:senai@localhost:5432/manutencao` | Conexão com o Postgres |
+| `DATABASE_URL` | obrigatório | Conexão com o PostgreSQL da máquina host; no Docker Desktop, use `host.docker.internal` no lugar de `localhost` |
 | `LLM_MODE` | `offline` | Modo padrão do redator (`offline` ou `online`); pode ser sobrescrito por requisição via campo `modo` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Endpoint do Ollama (offline) |
 | `OLLAMA_MODEL` | `qwen2.5:7b-instruct` | Modelo local; repassado pelo compose (`.env` do host → serviço `api`) |
@@ -415,7 +426,7 @@ python -m scripts.simulator --n 10 --intervalo 3
 | `OPENAI_MODEL` | `gpt-5.6-luna` | Modelo online |
 | `EMBEDDING_MODEL` | `intfloat/multilingual-e5-base` | Modelo de embeddings do RAG |
 | `EMBEDDING_DIM` | `768` | Dimensão dos vetores |
-| `DATA_FILE` | `banner.xlsx` | Fonte do seed único de `sensor_readings`; só é lido se a tabela estiver vazia (volume de Postgres novo) — nos boots seguintes o histórico vem do banco |
+| `DATA_FILE` | `banner.xlsx` | Fonte do seed único de `sensor_readings`; só é lido se a tabela estiver vazia — nos boots seguintes o histórico vem do banco |
 | `FAISS_DIR` | `data_local/faiss` | Reservado para uso futuro — o índice atual é reconstruído em memória a cada bootstrap, sem persistência em disco |
 | `RAG_K` | `4` | Trechos recuperados por família em uma busca focada |
 | `RAG_MIN_SCORE` | `0.82` | Cosseno mínimo para um trecho contar como evidência (ver "Evidência e relevância no chat") |
@@ -427,11 +438,11 @@ python -m scripts.simulator --n 10 --intervalo 3
 Este protótipo foi desenhado para rodar **localmente** (estação de trabalho do avaliador ou
 demonstração), e a configuração reflete isso de forma deliberada:
 
-- Todas as portas do `docker-compose.yml` são publicadas apenas em `127.0.0.1` — nenhum
-  serviço (Postgres, Ollama, API, dashboard) fica acessível a partir da rede.
-- As credenciais do Postgres são parametrizáveis por variável de ambiente
-  (`POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`), com defaults simples adequados apenas
-  ao uso local.
+- Todas as portas publicadas pelo `docker-compose.yml` usam apenas `127.0.0.1` — Ollama,
+  API e dashboard não ficam acessíveis a partir da rede. O PostgreSQL é externo ao stack e
+  deve ter suas próprias regras de bind, firewall e autenticação.
+- As credenciais do PostgreSQL ficam somente na `DATABASE_URL` do `.env`, arquivo ignorado
+  pelo Git. O compose não possui banco ou credenciais alternativas de fallback.
 - A API **não tem autenticação** — decisão de escopo documentada na seção 9. O ponto mais
   sensível é o `POST /documentos`: como os documentos registrados alimentam diretamente as
   respostas do assistente, em produção esse endpoint sem controle de acesso permitiria que
