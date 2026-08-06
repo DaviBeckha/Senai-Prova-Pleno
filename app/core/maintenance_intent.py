@@ -135,21 +135,13 @@ _ATTRIBUTIVE_PHYSICAL_ADJECTIVE = re.compile(
 )
 _PRESENT_PASSIVE_INTERVENTION = re.compile(
     rf"\b(?P<subject>[a-z0-9_-]+)\s+e\s+"
-    rf"(?:{_PRESENT_PASSIVE_PARTICIPLE_FRAGMENT})\b"
+    rf"(?P<participle>{_PRESENT_PASSIVE_PARTICIPLE_FRAGMENT})\b"
 )
 _INVERTED_PRESENT_TENSION_MEASUREMENT = re.compile(
     r"\be\s+medid[oa]s?\b[^?.;]{0,80}\btensao\b"
 )
 _INVERTED_PRESENT_MAINTENANCE = re.compile(
     r"\be\s+feit[oa]s?\b[^?.;]{0,80}\bmanutencao\b"
-)
-_PRESENT_TENSION_MEASUREMENT = re.compile(
-    rf"(?:\btensao\b[^?.;]{{0,80}}\be\s+medid[oa]s?\b|"
-    rf"{_INVERTED_PRESENT_TENSION_MEASUREMENT.pattern})"
-)
-_PRESENT_MAINTENANCE_INTERVENTION = re.compile(
-    rf"(?:\bmanutencao\b[^?.;]{{0,80}}\be\s+feit[oa]s?\b|"
-    rf"{_INVERTED_PRESENT_MAINTENANCE.pattern})"
 )
 _ADJUSTMENT_PARTICIPLE_FRAGMENT = (
     r"(?:pux|estic|tension|solt|calibr)ad[oa]s?|solt[oa]s?"
@@ -160,6 +152,14 @@ _REPAIR_PARTICIPLE_FRAGMENT = (
 _PASSIVE_PHYSICAL_INTERVENTION = re.compile(
     rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+"
     rf"(?:{_PASSIVE_ACTION_PARTICIPLE_FRAGMENT})\b"
+)
+_PASSIVE_ADJUSTMENT_INTERVENTION = re.compile(
+    rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+"
+    rf"(?:{_ADJUSTMENT_PARTICIPLE_FRAGMENT})\b"
+)
+_PASSIVE_REPAIR_INTERVENTION = re.compile(
+    rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+"
+    rf"(?:{_REPAIR_PARTICIPLE_FRAGMENT})\b"
 )
 _PASSIVE_TENSION_MEASUREMENT = re.compile(
     rf"(?:\btensao\b[^?.;]{{0,80}}\b"
@@ -193,7 +193,7 @@ _ACTION_PATTERNS = (
             rf"\b(?:inspecion\w*|verific\w*|"
             rf"{_TENSION_MEASUREMENT_FRAGMENT}|"
             rf"{_PASSIVE_TENSION_MEASUREMENT.pattern}|"
-            rf"{_PRESENT_TENSION_MEASUREMENT.pattern})\b"
+            rf"{_INVERTED_PRESENT_TENSION_MEASUREMENT.pattern})\b"
         ),
     ),
     (
@@ -202,7 +202,6 @@ _ACTION_PATTERNS = (
             rf"\b(?:ajust\w*|apert\w*|reapert\w*|{_PULL_FRAGMENT}|"
             rf"{_STRETCH_FRAGMENT}|{_TENSION_FRAGMENT}|"
             rf"{_LOOSEN_FRAGMENT}|{_CALIBRATE_FRAGMENT})\b"
-            rf"|\b(?:{_ADJUSTMENT_PARTICIPLE_FRAGMENT})\b"
         ),
     ),
     (MaintenanceAction.ALIGN, re.compile(r"\b(?:alinh\w*)\b")),
@@ -223,9 +222,8 @@ _ACTION_PATTERNS = (
             rf"procedimento|{_TOUCH_FRAGMENT}|{_LEAN_FRAGMENT}|"
             rf"{_HANDLE_FRAGMENT}|{_CLEAN_FRAGMENT}|"
             rf"{_MAINTENANCE_PHRASE_FRAGMENT}|"
-            rf"{_REPAIR_PARTICIPLE_FRAGMENT}|"
             rf"{_PASSIVE_MAINTENANCE_INTERVENTION.pattern}|"
-            rf"{_PRESENT_MAINTENANCE_INTERVENTION.pattern})\b"
+            rf"{_INVERTED_PRESENT_MAINTENANCE.pattern})\b"
         ),
     ),
 )
@@ -320,6 +318,17 @@ _STATIVE_COORDINATED_PHYSICAL_ADJECTIVE = re.compile(
     rf"\best(?:a|ao)\s+(?:corret[oa]s?|adequad[oa]s?)\s+e\s+"
     rf"(?:{_PRESENT_PASSIVE_PARTICIPLE_FRAGMENT})\b"
 )
+_PHYSICAL_ADJECTIVE_CHAIN_FRAGMENT = (
+    rf"(?:{_PRESENT_PASSIVE_PARTICIPLE_FRAGMENT})"
+    rf"(?:\s+e\s+(?:{_PRESENT_PASSIVE_PARTICIPLE_FRAGMENT}))*"
+)
+_STATE_OBSERVATION_REQUEST = re.compile(
+    rf"\b(?:parece(?:m)?|permanece(?:m)?|continua(?:m)?|"
+    rf"aparenta(?:m)?|encontra(?:m)?\s+se)\s+"
+    rf"{_PHYSICAL_ADJECTIVE_CHAIN_FRAGMENT}\b|"
+    rf"\b(?:foi|foram)\s+(?:considerad|avaliad|classificad)[oa]s?\s+"
+    rf"{_PHYSICAL_ADJECTIVE_CHAIN_FRAGMENT}\b"
+)
 _ADDITIONAL_ACTION_CLAUSE = re.compile(
     r"\b(?:e|tambem)\s+(?P<clause>[^?]+)$"
 )
@@ -352,6 +361,18 @@ _SAFETY_ONLY_REQUEST = re.compile(
 )
 
 
+def _contextual_present_passive_matches(
+    normalized: str,
+) -> tuple[re.Match[str], ...]:
+    return tuple(
+        match
+        for match in _PRESENT_PASSIVE_INTERVENTION.finditer(normalized)
+        if not _ATTRIBUTIVE_PHYSICAL_ADJECTIVE.fullmatch(
+            match.group("subject")
+        )
+    )
+
+
 def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
     normalized = normalize_text(value)
     # "verificações de segurança" descreve o tema da pergunta, não uma
@@ -363,6 +384,23 @@ def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
         for action, pattern in _ACTION_PATTERNS
         if pattern.search(normalized)
     ]
+    if _PASSIVE_ADJUSTMENT_INTERVENTION.search(normalized):
+        actions.append(MaintenanceAction.ADJUST)
+    if _PASSIVE_REPAIR_INTERVENTION.search(normalized):
+        actions.append(MaintenanceAction.REPAIR)
+    for match in _contextual_present_passive_matches(normalized):
+        participle = match.group("participle")
+        if re.fullmatch(_ADJUSTMENT_PARTICIPLE_FRAGMENT, participle):
+            actions.append(MaintenanceAction.ADJUST)
+        elif re.fullmatch(_REPAIR_PARTICIPLE_FRAGMENT, participle):
+            actions.append(MaintenanceAction.REPAIR)
+        elif re.fullmatch(r"medid[oa]s?", participle):
+            actions.append(MaintenanceAction.INSPECT)
+        elif (
+            re.fullmatch(r"feit[oa]s?", participle)
+            and "manutencao" in normalized
+        ):
+            actions.append(MaintenanceAction.REPAIR)
     specific_correction = {
         MaintenanceAction.ADJUST,
         MaintenanceAction.ALIGN,
@@ -406,6 +444,14 @@ def is_explanation_request(value: str) -> bool:
 
 def is_factual_request(value: str) -> bool:
     normalized = normalize_text(value)
+    if _STATE_OBSERVATION_REQUEST.search(normalized):
+        without_state_observation = _STATE_OBSERVATION_REQUEST.sub(
+            " ",
+            normalized,
+        )
+        return not has_explicit_physical_intervention(
+            without_state_observation
+        )
     if _STATIVE_FACTUAL_REQUEST.search(normalized):
         without_stative_description = (
             _STATIVE_COORDINATED_PHYSICAL_ADJECTIVE.sub(
@@ -437,17 +483,12 @@ def _has_passive_physical_intervention(normalized: str) -> bool:
             _PASSIVE_PHYSICAL_INTERVENTION,
             _PASSIVE_TENSION_MEASUREMENT,
             _PASSIVE_MAINTENANCE_INTERVENTION,
-            _PRESENT_TENSION_MEASUREMENT,
-            _PRESENT_MAINTENANCE_INTERVENTION,
+            _INVERTED_PRESENT_TENSION_MEASUREMENT,
+            _INVERTED_PRESENT_MAINTENANCE,
         )
     ):
         return True
-    return any(
-        not _ATTRIBUTIVE_PHYSICAL_ADJECTIVE.fullmatch(
-            match.group("subject")
-        )
-        for match in _PRESENT_PASSIVE_INTERVENTION.finditer(normalized)
-    )
+    return bool(_contextual_present_passive_matches(normalized))
 
 
 def _has_follow_up_physical_action(

@@ -637,6 +637,20 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         "A correia limpa está adequada com o motor ligado?",
         "A correia solta está adequada com o motor ligado?",
         "A correia está correta e calibrada com o motor ligado?",
+        (
+            "Qual a data do registro da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        (
+            "Qual o custo da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        "A correia parece tensionada e calibrada com o motor ligado.",
+        "A correia permanece tensionada e calibrada com o motor ligado.",
+        (
+            "A correia foi considerada tensionada e calibrada "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):

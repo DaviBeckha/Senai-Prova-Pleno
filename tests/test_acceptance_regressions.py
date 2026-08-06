@@ -543,6 +543,20 @@ def test_explicacao_pura_nao_alcanca_indice_ou_redator(question):
         "Qual o custo do reparo da correia com o motor ligado?",
         "Qual a data da troca da correia?",
         "O aperto da correia está correto?",
+        (
+            "Qual a data do registro da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        (
+            "Qual o custo da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        "A correia parece tensionada e calibrada com o motor ligado.",
+        "A correia permanece tensionada e calibrada com o motor ligado.",
+        (
+            "A correia foi considerada tensionada e calibrada "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_consulta_factual_nao_alcanca_indice_ou_redator(question):
