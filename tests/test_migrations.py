@@ -30,6 +30,18 @@ def _sqlite_url(db_path: Path) -> str:
     return f"sqlite+pysqlite:///{db_path.as_posix()}"
 
 
+def _tem_fk_diagnoses_e_uq_documents(url: str) -> tuple[bool, bool]:
+    engine = create_engine(url, future=True)
+    try:
+        fks = inspect(engine).get_foreign_keys("diagnoses")
+        uqs = inspect(engine).get_unique_constraints("documents")
+    finally:
+        engine.dispose()
+    tem_fk = any(fk["referred_table"] == "events" for fk in fks)
+    tem_uq = any(set(uq["column_names"]) == {"family", "title"} for uq in uqs)
+    return tem_fk, tem_uq
+
+
 def test_alembic_upgrade_head_cria_fk_diagnoses_event_id(tmp_path, monkeypatch):
     db_path = tmp_path / "migra_fk.db"
     url = _sqlite_url(db_path)
@@ -247,5 +259,30 @@ def test_migration_dedup_documents_legados_mantem_linha_mais_antiga(tmp_path, mo
             (1, "Doc Correia", "antigo.pdf"),
             (3, "doc correia", "case-diferente.pdf"),
         ]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_alembic_downgrade_remove_e_upgrade_restaura_fk_e_unique_constraint(tmp_path, monkeypatch):
+    # drop_constraint em batch mode no SQLite (recreate da tabela) e o ponto
+    # mais fragil das duas migrations novas -- so validado manualmente ate
+    # aqui. Confere o ciclo completo: upgrade cria os dois artefatos,
+    # downgrade para 0002 remove ambos, upgrade de volta para head restaura
+    # os dois.
+    db_path = tmp_path / "migra_downgrade.db"
+    url = _sqlite_url(db_path)
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        cfg = _alembic_config(url)
+
+        command.upgrade(cfg, "head")
+        assert _tem_fk_diagnoses_e_uq_documents(url) == (True, True)
+
+        command.downgrade(cfg, "0002")
+        assert _tem_fk_diagnoses_e_uq_documents(url) == (False, False)
+
+        command.upgrade(cfg, "head")
+        assert _tem_fk_diagnoses_e_uq_documents(url) == (True, True)
     finally:
         get_settings.cache_clear()
