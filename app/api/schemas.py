@@ -1,4 +1,4 @@
-from pydantic import BaseModel, create_model
+from pydantic import BaseModel, ConfigDict, create_model
 
 from app.data.loader import FEATURE_COLUMNS
 
@@ -30,6 +30,53 @@ class ChatIn(BaseModel):
 
 
 class ChatOut(BaseModel):
+    status: str
     resposta: str
+    families: list[str]
     fontes: list[str]
+    renderer: str | None
     degraded: bool
+    limitations: list[str]
+    validation_errors: list[str]
+
+    # Dois exemplos no Swagger bastam para mostrar, sem provocar os dois casos
+    # ao vivo, a distincao central do projeto: resposta fundamentada (status
+    # "answered", com fontes e renderer) versus contencao por falta de
+    # documento (status "undocumented", sem fontes nem renderer). Rotulos
+    # reais — ver app/pipeline.py::answer_question e
+    # app/chat/responses.py::undocumented_report.
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "status": "answered",
+                    "resposta": (
+                        "- Ajustar tensão da correia até atingir a deflexão "
+                        "especificada [Doc4.pdf — seção 9.1; evidência correia:E1]."
+                    ),
+                    "families": ["correia"],
+                    "fontes": ["Doc4.pdf"],
+                    "renderer": "ollama",
+                    "degraded": False,
+                    "limitations": [
+                        "A evidência não cobre o torque exato de reaperto."
+                    ],
+                    "validation_errors": [],
+                },
+                {
+                    "status": "undocumented",
+                    "resposta": (
+                        "Reconheci o problema como falta fase, mas ainda não "
+                        "existe documento orientativo cadastrado para essa "
+                        "manutenção."
+                    ),
+                    "families": ["falta_fase"],
+                    "fontes": [],
+                    "renderer": None,
+                    "degraded": False,
+                    "limitations": [],
+                    "validation_errors": [],
+                },
+            ]
+        }
+    )

@@ -89,8 +89,16 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         if body.modo not in (None, "offline", "online"):
             raise HTTPException(422, "modo invalido: use 'offline' ou 'online'")
         report = state.pipeline.answer_question(body.pergunta, mode=body.modo)
-        return ChatOut(resposta=report.message, fontes=report.sources,
-                       degraded=report.degraded)
+        return ChatOut(
+            status=report.status,
+            resposta=report.message,
+            families=list(report.families),
+            fontes=list(report.sources),
+            renderer=report.renderer,
+            degraded=report.degraded,
+            limitations=list(report.limitations),
+            validation_errors=list(report.validation_errors),
+        )
 
     @app.post("/documentos")
     async def documentos(file: UploadFile, family: str = Form(...),
