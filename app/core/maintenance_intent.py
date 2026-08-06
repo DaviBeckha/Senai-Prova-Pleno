@@ -226,7 +226,7 @@ _ACTION_PATTERNS = (
     (MaintenanceAction.VALIDATE, re.compile(r"\b(?:valid\w*|confirm\w*|test\w*)\b")),
     (
         MaintenanceAction.DIAGNOSE,
-        re.compile(r"\b(?:diagnostic\w*|identific\w*|causas?)\b"),
+        re.compile(r"\b(?:diagnostic\w*|identific\w*|causas?|sintomas?)\b"),
     ),
     (
         MaintenanceAction.REPAIR,

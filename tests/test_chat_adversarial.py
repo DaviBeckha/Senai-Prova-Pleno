@@ -501,6 +501,21 @@ def test_consertar_e_reconhecido_como_acao_de_reparo():
     assert analysis.requested_actions == ("repair",)
 
 
+def test_pergunta_por_sintomas_e_reconhecida_como_diagnostico():
+    """"sintoma" ja e vocabulario de diagnostico do lado do DOCUMENTO.
+
+    classify_content_role marca a secao "Sintomas e diagnostico" como
+    ContentRole.DIAGNOSIS, mas o padrao de MaintenanceAction.DIAGNOSE nao
+    reconhecia a mesma palavra na PERGUNTA. A assimetria fazia a pergunta
+    atravessar o pipeline com zero acoes detectadas: nem
+    validate_evidence_adequacy nem validate_answer_adequacy cobravam que a
+    resposta trouxesse a secao de sintomas.
+    """
+    analysis = analyze_question("Quais sao os sintomas de falha na correia?")
+
+    assert analysis.requested_actions == ("diagnose",)
+
+
 def test_analise_expoe_condicoes_que_sustentam_substituicao():
     analysis = analyze_question("Como corrigir uma correia com trincas e desgaste?")
 
