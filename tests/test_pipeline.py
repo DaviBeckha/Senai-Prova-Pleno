@@ -131,6 +131,18 @@ def test_diagnose_neighbor_count_bate_com_vizinhos_consultados_pela_engine():
     assert sum(rep.family_votes.values()) == rep.neighbor_count
 
 
+def test_neighbor_count_nao_e_o_total_historico_da_familia():
+    # Com 60 registros da familia, o kNN clampa em k=50: neighbor_count=50
+    # DIVERGE de total_ocorrencias=60. Uma implementacao que confundisse as
+    # duas grandezas (preenchendo neighbor_count com o total historico)
+    # falharia aqui.
+    rep = _pipeline(_df("correia", "falha", n=60)).diagnose(_event())
+    assert rep.neighbor_count == 50
+    assert rep.total_ocorrencias == 60
+    assert rep.neighbor_count != rep.total_ocorrencias
+    assert sum(rep.family_votes.values()) == rep.neighbor_count
+
+
 def test_falha_sem_documento_nao_chama_llm():
     # RaisingIndex/RaisingRouter travam estruturalmente que nem o retrieval
     # nem o LLM sao tocados quando o guardrail ja decide "nao_documentado".
