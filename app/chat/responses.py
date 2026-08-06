@@ -116,6 +116,20 @@ def explanation_report(families: tuple[str, ...]) -> ChatReport:
     )
 
 
+def factual_report(families: tuple[str, ...]) -> ChatReport:
+    return ChatReport(
+        "insufficient_evidence",
+        (
+            f"Reconheci uma consulta factual sobre {_names(families)}, mas o "
+            "histórico e os documentos disponíveis não comprovam esse dado "
+            "específico. Para não converter uma consulta de custo, data ou "
+            "condição em instruções de manutenção, não exibirei passos de "
+            "intervenção."
+        ),
+        families,
+    )
+
+
 def history_report(
     families: tuple[str, ...],
     stats_by_family: dict,

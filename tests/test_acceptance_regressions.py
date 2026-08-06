@@ -394,6 +394,9 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Explique para mim como abrir a proteção da correia com o motor ligado.",
         "Explique passo a passo como trocar a correia com o motor ligado.",
         "Explique a função da correia e abra a proteção com o motor ligado.",
+        "Explique o procedimento para trocar a correia com o motor ligado.",
+        "Explique a forma de ajustar a correia com o motor ligado.",
+        "Explique a função da correia e tente abrir a proteção com o motor ligado.",
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):
@@ -415,7 +418,16 @@ def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):
     assert "Não realize a intervenção" in report.message
 
 
-def test_explicacao_pura_nao_alcanca_indice_ou_redator():
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que significa o ajuste da correia com o motor ligado?",
+        "Explique como funciona a correia.",
+        "Como funciona a correia?",
+        "Qual a função da correia?",
+    ),
+)
+def test_explicacao_pura_nao_alcanca_indice_ou_redator(question):
     df = _dataframe("correia", "correia")
     engine = SimilarityEngine()
     engine.fit(df)
@@ -427,9 +439,35 @@ def test_explicacao_pura_nao_alcanca_indice_ou_redator():
         _RaisingRouter(),
     )
 
-    report = pipeline.answer_question(
-        "O que significa o ajuste da correia com o motor ligado?"
+    report = pipeline.answer_question(question)
+
+    assert report.status == "insufficient_evidence"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "Não realize a intervenção" not in report.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Qual o custo do reparo da correia com o motor ligado?",
+        "Qual a data da troca da correia?",
+        "O aperto da correia está correto?",
+    ),
+)
+def test_consulta_factual_nao_alcanca_indice_ou_redator(question):
+    df = _dataframe("correia", "correia")
+    engine = SimilarityEngine()
+    engine.fit(df)
+    pipeline = PrescriptivePipeline(
+        engine,
+        df,
+        _Registry(),
+        _RaisingIndex(),
+        _RaisingRouter(),
     )
+
+    report = pipeline.answer_question(question)
 
     assert report.status == "insufficient_evidence"
     assert report.sources == ()

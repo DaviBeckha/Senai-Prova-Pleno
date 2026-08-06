@@ -107,19 +107,17 @@ _EXPLICIT_PHYSICAL_FRAGMENT = (
 _EXPLICIT_PHYSICAL_INTERVENTION = re.compile(
     rf"\b(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b"
 )
-_COORDINATED_PHYSICAL_INTERVENTION = re.compile(
-    rf"\b(?:e|tambem|depois|entao)\s+(?:por favor\s+)?"
-    rf"(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b"
-)
-
 _EXPLANATION_REQUEST = re.compile(
     r"\b(?:o que significa|o que (?:e|sao)|qual (?:e )?a definicao|"
     r"qual (?:e )?a diferenca|para que serve|explique|defina|conceitue)\b"
+    r"|\b(?:como funciona|qual (?:e )?a funcao|o que faz|fale sobre)\b"
 )
-_PROCEDURAL_EXPLANATION = re.compile(
-    r"\b(?:explique|descreva|mostre)\b[^?.]{0,80}\bcomo\b|"
-    r"\bo que (?:e|sao)\s+(?:necessari[oa]s?|preciso)\s+"
-    r"(?:fazer\s+)?para\b"
+_PROCEDURAL_NOMINAL_CUE = re.compile(
+    r"\b(?:procedimento|passo a passo|etapas?|forma de)\b"
+)
+_FACTUAL_REQUEST = re.compile(
+    r"\b(?:custo|preco|valor|data|prazo|responsavel)\b|"
+    r"\best(?:a|ao)\s+(?:corret[oa]s?|adequad[oa]s?)\b"
 )
 _ADDITIONAL_ACTION_CLAUSE = re.compile(
     r"\b(?:e|tambem)\s+(?P<clause>[^?]+)$"
@@ -129,6 +127,11 @@ _PROCEDURAL_CLAUSE_CUE = re.compile(
     r"^(?:qual|quais)\b.*\bprocedimento\b|"
     r"^(?:(?:qual|quais)\s+)?(?:as\s+)?etapas\b|"
     r"^(?:o\s+)?passo a passo\b"
+)
+_SAFETY_CONTEXT_CLAUSE = re.compile(
+    r"^(?:(?:as|quais as)\s+)?etapas?\s+de\s+"
+    r"(?:seguranca|bloqueio|etiquetagem)\b|"
+    r"^(?:seguranca|bloqueio|etiquetagem|cuidados?|epis?)\b"
 )
 
 _CONDITION_PATTERNS = {
@@ -187,11 +190,21 @@ def is_safety_request(value: str) -> bool:
 
 def is_explanation_request(value: str) -> bool:
     normalized = normalize_text(value)
-    return bool(
-        _EXPLANATION_REQUEST.search(normalized)
-        and not _PROCEDURAL_EXPLANATION.search(normalized)
-        and not _COORDINATED_PHYSICAL_INTERVENTION.search(normalized)
+    if not _EXPLANATION_REQUEST.search(normalized):
+        return False
+    if _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized):
+        return False
+    return not (
+        _PROCEDURAL_NOMINAL_CUE.search(normalized)
+        and any(
+            action in _INTERVENTION_ACTIONS
+            for action in detect_actions(normalized)
+        )
     )
+
+
+def is_factual_request(value: str) -> bool:
+    return bool(_FACTUAL_REQUEST.search(normalize_text(value)))
 
 
 def is_safety_only_request(value: str) -> bool:
@@ -200,6 +213,7 @@ def is_safety_only_request(value: str) -> bool:
     clause = additional.group("clause") if additional else ""
     has_additional_action = bool(
         additional
+        and not _SAFETY_CONTEXT_CLAUSE.search(clause)
         and (
             (
                 _PROCEDURAL_CLAUSE_CUE.search(clause)

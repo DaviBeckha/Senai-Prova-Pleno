@@ -337,7 +337,7 @@ def test_intervencao_e_orientada_para_formas_conjugadas_dos_verbos(pergunta):
     _assert_live_safety_guidance(rep)
 
 
-def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida_normalmente():
+def test_pergunta_sobre_funcao_da_abracadeira_nao_retorna_procedimento():
     # "abraçadeira" contem o radical "abr" (de "abrir"). Se _INTERVENTION
     # usasse abr\w* (amplo, como os demais verbos), este substantivo seria
     # casado indevidamente; por isso "abrir" usa uma alternativa mais estreita
@@ -349,9 +349,11 @@ def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida
 
     rep = pipeline.answer_question("qual a função da abraçadeira da correia?")
 
-    assert rep.status == "answered"
+    assert rep.status == "insufficient_evidence"
     assert rep.families == ("correia",)
-    assert rep.sources == ("Doc4.pdf",)
+    assert rep.sources == ()
+    assert rep.renderer is None
+    assert "ajustar a tensao" not in normalize_text(rep.message)
     assert "Antes de qualquer intervenção" not in rep.message
 
 
@@ -533,6 +535,10 @@ def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only(
             "Quais medidas de segurança e cuidados são necessários para a "
             "troca da correia?"
         ),
+        (
+            "Quais medidas de segurança e etapas de bloqueio para a troca "
+            "da correia?"
+        ),
     ),
 )
 def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(
@@ -564,6 +570,10 @@ def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(
         "Explique o alinhamento da polia.",
         "Para que serve o ajuste da correia?",
         "Qual a diferença entre ajuste e alinhamento da polia?",
+        "Como funciona a correia?",
+        "Qual a função da polia?",
+        "O que faz a correia?",
+        "Fale sobre a correia.",
     ),
 )
 def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
@@ -585,6 +595,21 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
     assert "verificar excentricidade" not in normalize_text(report.message)
     assert "Antes de qualquer intervenção" not in report.message
     assert "Não realize a intervenção" not in report.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Qual o custo do reparo da correia?",
+        "Qual a data da troca da correia?",
+        "O aperto da correia está correto?",
+    ),
+)
+def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.FACTUAL
+    assert analysis.requested_actions == ()
 
 
 @pytest.mark.parametrize("verb", ("remover", "instalar"))

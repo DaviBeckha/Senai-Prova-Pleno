@@ -8,6 +8,7 @@ from app.chat.responses import (
     clarification_report,
     document_status_report,
     explanation_report,
+    factual_report,
     history_report,
     out_of_scope_report,
     state_report,
@@ -260,6 +261,8 @@ class PrescriptivePipeline:
             )
         if analysis.intent is ChatIntent.EXPLANATION:
             return explanation_report(analysis.explicit_families)
+        if analysis.intent is ChatIntent.FACTUAL:
+            return factual_report(analysis.explicit_families)
 
         # Toda intencao procedural usa a mesma taxonomia de acoes do
         # reranking/validador. Com a maquina ligada, a resposta termina aqui e

@@ -12,6 +12,7 @@ from app.core.maintenance_intent import (
     detect_actions,
     detect_conditions,
     is_explanation_request,
+    is_factual_request,
     is_safety_only_request,
     is_safety_request,
 )
@@ -45,7 +46,10 @@ def _symptom_candidates(normalized: str) -> tuple[str, ...]:
 def analyze_question(question: str) -> QuestionAnalysis:
     normalized = normalize_text(question)
     explanation = is_explanation_request(normalized)
-    requested_actions = () if explanation else detect_actions(normalized)
+    factual = is_factual_request(normalized)
+    requested_actions = (
+        () if explanation or factual else detect_actions(normalized)
+    )
     conditions = detect_conditions(normalized)
     requires_safety = is_safety_request(normalized)
     safety_only = is_safety_only_request(normalized)
@@ -107,7 +111,11 @@ def analyze_question(question: str) -> QuestionAnalysis:
             (
                 ChatIntent.EXPLANATION
                 if explanation
-                else ChatIntent.PROCEDURE
+                else (
+                    ChatIntent.FACTUAL
+                    if factual
+                    else ChatIntent.PROCEDURE
+                )
             ),
             explicit,
             negated_families=negated,
