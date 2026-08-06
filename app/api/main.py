@@ -76,12 +76,16 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
                 event = Event(external_id=None, payload=features, family=report.family,
                               kind=("estado" if report.status == "estado" else "falha"))
                 session.add(event)
-                session.commit()
-                session.add(Diagnosis(event_id=event.id, status=report.status,
-                                      family=report.family, renderer=report.renderer,
-                                      message=report.message,
-                                      freq_per_day=report.freq_per_day))
-                session.commit()
+                try:
+                    session.flush()  # gera event.id sem commitar
+                    session.add(Diagnosis(event_id=event.id, status=report.status,
+                                          family=report.family, renderer=report.renderer,
+                                          message=report.message,
+                                          freq_per_day=report.freq_per_day))
+                    session.commit()  # unico commit: tudo ou nada
+                except Exception as exc:
+                    session.rollback()
+                    raise HTTPException(500, "falha ao registrar o diagnóstico") from exc
         return DiagnosisOut(**report.__dict__)
 
     @app.post("/chat", response_model=ChatOut)

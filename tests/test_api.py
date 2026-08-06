@@ -255,6 +255,40 @@ def test_eventos_sem_session_factory_nao_persiste():
     assert r.status_code == 200
 
 
+def test_eventos_rollback_transacional_quando_diagnosis_falha(monkeypatch):
+    # Transacao unica: se a gravacao do Diagnosis falhar apos o Event ja ter
+    # sido adicionado a sessao, nada pode ficar persistido — nem o Event
+    # (que ficaria orfao sem diagnostico). Simula a falha fazendo o proprio
+    # construtor de Diagnosis levantar, depois que o Event ja passou por
+    # session.add() (equivalente a um INSERT de Diagnosis falhando no meio
+    # da transacao).
+    factory = _session_factory_memoria()
+    app = create_app(skip_bootstrap=True)
+    pipeline = FakePipeline()
+    state = AppState(pipeline=pipeline, registry=None, index=None, df=None,
+                     session_factory=factory)
+    app.dependency_overrides[get_state] = lambda: state
+    client = TestClient(app)
+
+    def _diagnosis_init_boom(self, *args, **kwargs):
+        raise RuntimeError("falha simulada na insercao do diagnostico")
+
+    monkeypatch.setattr(Diagnosis, "__init__", _diagnosis_init_boom)
+
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    r = client.post("/eventos", json=body)
+
+    assert r.status_code == 500
+    assert "falha ao registrar o diagnóstico" in r.json()["detail"]
+
+    with factory() as session:
+        events = list(session.scalars(select(Event)).all())
+        diagnoses = list(session.scalars(select(Diagnosis.id)).all())
+
+    assert events == []
+    assert diagnoses == []
+
+
 def test_documentos_extensao_nao_suportada():
     client, _ = _client_com_pipeline()
     r = client.post(
