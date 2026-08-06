@@ -60,8 +60,193 @@ def test_variacoes_de_mexer_com_maquina_ligada_geram_orientacao(question):
     assert "ausência de energia" in decision.message
 
 
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Posso tocar na correia com o motor ligado?",
+        "Posso encostar na correia com o motor ligado?",
+        "Posso manipular a correia com o motor ligado?",
+        "Posso fazer manutenção na correia com o motor ligado?",
+        "Posso puxar a correia com o motor ligado?",
+        "Posso esticar a correia com o motor ligado?",
+        "Posso tensionar a correia com o motor ligado?",
+        "Posso soltar a correia com o motor ligado?",
+        "Posso calibrar a correia com o motor ligado?",
+        "Posso limpar a correia com o motor ligado?",
+        "Posso medir a tensão da correia com o motor ligado?",
+        (
+            "O que significa tensionar e posso limpar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar, mas estou limpando a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e como limpar a correia "
+            "com o motor ligado?"
+        ),
+        "O que é recomendado para limpar a correia com o motor ligado?",
+        (
+            "O que é indicado para medir a tensão da correia "
+            "com o motor ligado?"
+        ),
+        "Posso fazer uma manutenção na correia com o motor ligado?",
+        (
+            "Posso medir novamente a tensão da correia "
+            "com o motor ligado?"
+        ),
+        (
+            "Estou medindo agora a tensão da correia "
+            "com o motor ligado."
+        ),
+        "A correia está sendo tensionada com o motor ligado.",
+        "A correia será calibrada com o motor ligado.",
+        "A ferramenta foi encostada na correia com o motor ligado.",
+        "A tensão da correia foi medida com o motor ligado.",
+        "A manutenção da correia foi feita com o motor ligado.",
+        "A correia é tensionada com o motor ligado.",
+        "A correia e tensionada com o motor ligado.",
+        "As correias são tensionadas com o motor ligado.",
+        "A correia vai ser calibrada com o motor ligado.",
+        "A correia deve ser calibrada com o motor ligado.",
+        "Foi medida a tensão da correia com o motor ligado.",
+        "Foi feita a manutenção da correia com o motor ligado.",
+        "A tensão é medida com o motor ligado.",
+        "A manutenção é feita com o motor ligado.",
+        (
+            "A correia está correta e deve ser calibrada "
+            "com o motor ligado."
+        ),
+        "A correia está correta, mas quero limpar com o motor ligado.",
+        (
+            "Eu vou tensionar a correia com o motor ligado; "
+            "ela está correta?"
+        ),
+    ),
+)
+def test_novas_intervencoes_com_maquina_ligada_geram_orientacao(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION
+    assert "Não realize a intervenção" in decision.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Toque na correia com o motor ligado.",
+        "Estou encostando na correia com o motor ligado.",
+        "Manipule a correia com o motor ligado.",
+        "Faça manutenção na correia com o motor ligado.",
+        "Puxe a correia com o motor ligado.",
+        "Estou esticando a correia com o motor ligado.",
+        "Tensione a correia com o motor ligado.",
+        "Solte a correia com o motor ligado.",
+        "Calibre a correia com o motor ligado.",
+        "Limpe a correia com o motor ligado.",
+        "Meça a tensão da correia com o motor ligado.",
+        "Encostei na correia com o motor ligado.",
+        "Manipulei a correia com o motor ligado.",
+        "Puxei a correia com o motor ligado.",
+        "Tensionei a correia com o motor ligado.",
+        "Soltei a correia com o motor ligado.",
+        "Calibrei a correia com o motor ligado.",
+        "Limpei a correia com o motor ligado.",
+        "Medi a tensão da correia com o motor ligado.",
+        "Faço manutenção na correia com o motor ligado.",
+        "Nós limpávamos a correia com o motor ligado.",
+        "Eles limparão a correia com o motor ligado.",
+        "Façamos manutenção na correia com o motor ligado.",
+        "Mediremos a tensão da correia com o motor ligado.",
+    ),
+)
+def test_conjugacoes_das_novas_intervencoes_geram_orientacao(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que significa tensionar uma correia?",
+        "O que significa fazer manutenção na correia?",
+        "Qual o custo da limpeza da correia?",
+        "A medição da tensão da correia está correta?",
+        "Para que serve tensionar uma correia com o motor ligado?",
+        (
+            "Explique o que significa fazer manutenção na correia "
+            "com o motor ligado."
+        ),
+        (
+            "O que significa tensionar e posso chamar isso de ajuste "
+            "da correia com o motor ligado?"
+        ),
+        "O que é tensionar uma correia com o motor ligado?",
+        "O que é fazer manutenção na correia com o motor ligado?",
+        "Explique o que é limpar uma correia com o motor ligado.",
+        (
+            "Qual a diferença entre tensionar e esticar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e para que serve esticar "
+            "a correia com o motor ligado?"
+        ),
+        "A correia tensionada está correta com o motor ligado?",
+        "A correia calibrada está adequada com o motor ligado?",
+        "A correia limpa está adequada com o motor ligado?",
+        "A correia solta está adequada com o motor ligado?",
+        "A correia está correta e calibrada com o motor ligado?",
+        (
+            "Qual a data do registro da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        (
+            "Qual o custo da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        "A correia parece tensionada e calibrada com o motor ligado.",
+        "A correia permanece tensionada e calibrada com o motor ligado.",
+        (
+            "A correia foi considerada tensionada e calibrada "
+            "com o motor ligado."
+        ),
+    ),
+)
+def test_novos_termos_sem_pedido_fisico_nao_acionam_guardrail(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ALLOW
+    assert decision.message == ""
+
+
 def test_intervencao_normal_gera_aviso_preventivo():
     decision = assess_question_safety("Como trocar a correia?")
+
+    assert decision.outcome is SafetyOutcome.ADVISE_INTERVENTION
+    assert decision.message.startswith("Antes de qualquer intervenção")
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Como tocar na correia?",
+        "Como encostar na correia?",
+        "Como manipular a correia?",
+        "Como fazer manutenção na correia?",
+        "Como puxar a correia?",
+        "Como esticar a correia?",
+        "Como tensionar a correia?",
+        "Como soltar a correia?",
+        "Como calibrar a correia?",
+        "Como limpar a correia?",
+        "Como medir a tensão da correia?",
+    ),
+)
+def test_novas_intervencoes_normais_geram_aviso_preventivo(question):
+    decision = assess_question_safety(question)
 
     assert decision.outcome is SafetyOutcome.ADVISE_INTERVENTION
     assert decision.message.startswith("Antes de qualquer intervenção")

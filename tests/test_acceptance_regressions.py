@@ -414,6 +414,79 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Alinhe a polia para o valor recomendado com o motor ligado.",
         "Aperte o parafuso para o valor recomendado com o motor ligado.",
         "Lubrifique o rolamento pelo menor custo com o motor ligado.",
+        "Posso tocar na correia com o motor ligado?",
+        "Posso encostar na correia com o motor ligado?",
+        "Posso manipular a correia com o motor ligado?",
+        "Posso fazer manutenção na correia com o motor ligado?",
+        "Posso puxar a correia com o motor ligado?",
+        "Posso esticar a correia com o motor ligado?",
+        "Posso tensionar a correia com o motor ligado?",
+        "Posso soltar a correia com o motor ligado?",
+        "Posso calibrar a correia com o motor ligado?",
+        "Posso limpar a correia com o motor ligado?",
+        "Posso medir a tensão da correia com o motor ligado?",
+        "Encostei na correia com o motor ligado.",
+        "Manipulei a correia com o motor ligado.",
+        "Puxei a correia com o motor ligado.",
+        "Tensionei a correia com o motor ligado.",
+        "Soltei a correia com o motor ligado.",
+        "Calibrei a correia com o motor ligado.",
+        "Limpei a correia com o motor ligado.",
+        "Medi a tensão da correia com o motor ligado.",
+        "Faço manutenção na correia com o motor ligado.",
+        "Nós limpávamos a correia com o motor ligado.",
+        "Eles limparão a correia com o motor ligado.",
+        "Façamos manutenção na correia com o motor ligado.",
+        "Mediremos a tensão da correia com o motor ligado.",
+        (
+            "O que significa tensionar e posso limpar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar, mas estou limpando a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e como limpar a correia "
+            "com o motor ligado?"
+        ),
+        "O que é recomendado para limpar a correia com o motor ligado?",
+        (
+            "O que é indicado para medir a tensão da correia "
+            "com o motor ligado?"
+        ),
+        "Posso fazer uma manutenção na correia com o motor ligado?",
+        (
+            "Posso medir novamente a tensão da correia "
+            "com o motor ligado?"
+        ),
+        (
+            "Estou medindo agora a tensão da correia "
+            "com o motor ligado."
+        ),
+        "A correia está sendo tensionada com o motor ligado.",
+        "A correia será calibrada com o motor ligado.",
+        "A ferramenta foi encostada na correia com o motor ligado.",
+        "A tensão da correia foi medida com o motor ligado.",
+        "A manutenção da correia foi feita com o motor ligado.",
+        "A correia é tensionada com o motor ligado.",
+        "A correia e tensionada com o motor ligado.",
+        "As correias são tensionadas com o motor ligado.",
+        "A correia vai ser calibrada com o motor ligado.",
+        "A correia deve ser calibrada com o motor ligado.",
+        "Foi medida a tensão da correia com o motor ligado.",
+        "Foi feita a manutenção da correia com o motor ligado.",
+        "A tensão é medida com o motor ligado.",
+        "A manutenção é feita com o motor ligado.",
+        (
+            "A correia está correta e deve ser calibrada "
+            "com o motor ligado."
+        ),
+        "A correia está correta, mas quero limpar com o motor ligado.",
+        (
+            "Eu vou tensionar a correia com o motor ligado; "
+            "ela está correta?"
+        ),
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):
@@ -470,6 +543,20 @@ def test_explicacao_pura_nao_alcanca_indice_ou_redator(question):
         "Qual o custo do reparo da correia com o motor ligado?",
         "Qual a data da troca da correia?",
         "O aperto da correia está correto?",
+        (
+            "Qual a data do registro da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        (
+            "Qual o custo da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        "A correia parece tensionada e calibrada com o motor ligado.",
+        "A correia permanece tensionada e calibrada com o motor ligado.",
+        (
+            "A correia foi considerada tensionada e calibrada "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_consulta_factual_nao_alcanca_indice_ou_redator(question):

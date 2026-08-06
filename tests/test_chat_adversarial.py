@@ -313,6 +313,29 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     assert any("não autoriza a execução" in limitation for limitation in rep.limitations)
 
 
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Como limpar a correia?",
+        "Como tensionar a correia?",
+        "Como fazer manutenção na correia?",
+    ),
+)
+def test_novas_intervencoes_sem_motor_ligado_seguem_fluxo_normal(question):
+    pipeline = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": CORREIA_CHUNK},
+    )
+
+    report = pipeline.answer_question(question)
+
+    assert report.status == "answered"
+    assert report.sources == ("Doc4.pdf",)
+    assert report.message.startswith("Antes de qualquer intervenção")
+    assert "Não realize a intervenção" not in report.message
+
+
 # Formas conjugadas (imperativo/gerundio) dos verbos de intervencao: antes
 # desta correcao, _INTERVENTION so casava o infinitivo de cada verbo, entao
 # "troque a correia com o motor ligado?" nao era reconhecida como intervencao
@@ -607,6 +630,27 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         "Qual o custo do reparo da correia?",
         "Qual a data da troca da correia?",
         "O aperto da correia está correto?",
+        "Qual o custo da limpeza da correia?",
+        "A medição da tensão da correia está correta?",
+        "A correia tensionada está correta com o motor ligado?",
+        "A correia calibrada está adequada com o motor ligado?",
+        "A correia limpa está adequada com o motor ligado?",
+        "A correia solta está adequada com o motor ligado?",
+        "A correia está correta e calibrada com o motor ligado?",
+        (
+            "Qual a data do registro da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        (
+            "Qual o custo da correia tensionada e calibrada "
+            "com o motor ligado?"
+        ),
+        "A correia parece tensionada e calibrada com o motor ligado.",
+        "A correia permanece tensionada e calibrada com o motor ligado.",
+        (
+            "A correia foi considerada tensionada e calibrada "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
@@ -619,8 +663,51 @@ def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question)
 @pytest.mark.parametrize(
     "question",
     (
+        "O que significa tensionar uma correia?",
+        "O que significa fazer manutenção na correia?",
+        "Para que serve tensionar uma correia com o motor ligado?",
+        (
+            "Explique o que significa fazer manutenção na correia "
+            "com o motor ligado."
+        ),
+        (
+            "O que significa tensionar e posso chamar isso de ajuste "
+            "da correia com o motor ligado?"
+        ),
+        "O que é tensionar uma correia com o motor ligado?",
+        "O que é fazer manutenção na correia com o motor ligado?",
+        "Explique o que é limpar uma correia com o motor ligado.",
+        (
+            "Qual a diferença entre tensionar e esticar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e para que serve esticar "
+            "a correia com o motor ligado?"
+        ),
+    ),
+)
+def test_novos_verbos_em_pergunta_conceitual_continuam_explicacao(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.EXPLANATION
+    assert analysis.requested_actions == ()
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
         "Como ajustar a correia para o valor recomendado com o motor ligado?",
         "Qual o custo para trocar a correia com o motor ligado?",
+        "A correia está correta, mas quero limpar com o motor ligado.",
+        (
+            "A correia está correta e deve ser calibrada "
+            "com o motor ligado."
+        ),
+        (
+            "Eu vou tensionar a correia com o motor ligado; "
+            "ela está correta?"
+        ),
     ),
 )
 def test_cue_factual_nao_neutraliza_acao_fisica_explicita(question):
@@ -628,6 +715,29 @@ def test_cue_factual_nao_neutraliza_acao_fisica_explicita(question):
 
     assert analysis.intent is ChatIntent.PROCEDURE
     assert analysis.requested_actions
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_action"),
+    (
+        (
+            "A tensão da correia é medida com o motor ligado.",
+            "inspect",
+        ),
+        (
+            "A manutenção da correia é feita com o motor ligado.",
+            "repair",
+        ),
+    ),
+)
+def test_voz_passiva_preserva_categoria_da_acao(
+    question,
+    expected_action,
+):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.requested_actions == (expected_action,)
 
 
 @pytest.mark.parametrize("verb", ("remover", "instalar"))
