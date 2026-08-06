@@ -110,6 +110,14 @@ def test_intervencao_inclui_seguranca_procedimento_e_validacao():
     ]
 
 
+def test_explicacao_recupera_conceito_sem_passos_de_intervencao():
+    bundle = _retrieve("O que significa o ajuste da correia?")
+
+    roles = [item.chunk.content_role for item in bundle.items]
+    assert roles == [ContentRole.GENERAL]
+    assert "Objetivo geral" in bundle.items[0].chunk.text
+
+
 def test_troca_explicita_preserva_bloco_de_substituicao():
     bundle = _retrieve("Como trocar uma correia com trincas?")
 

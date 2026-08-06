@@ -499,10 +499,21 @@ def test_verificacoes_de_seguranca_com_inspecao_explicita_preservam_inspecao():
     assert analysis.requested_actions == ("inspect",)
 
 
-def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only():
-    analysis = analyze_question(
-        "Quais medidas de segurança são necessárias e como trocar a correia?"
-    )
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Quais medidas de segurança são necessárias e como trocar a correia?",
+        (
+            "Quais medidas de segurança são necessárias e qual o "
+            "procedimento para trocar a correia?"
+        ),
+        "Quais medidas de segurança são necessárias e as etapas para trocar a correia?",
+    ),
+)
+def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only(
+    question,
+):
+    analysis = analyze_question(question)
 
     assert analysis.requires_safety is True
     assert analysis.safety_only is False
@@ -550,6 +561,7 @@ def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(
 def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
     analysis = analyze_question(question)
 
+    assert analysis.intent is ChatIntent.EXPLANATION
     assert analysis.requested_actions == ()
 
     report = _pipeline(
@@ -558,6 +570,11 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         {"correia": CORREIA_CHUNK, "polia": POLIA_CHUNK},
     ).answer_question(question)
 
+    assert report.status == "insufficient_evidence"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "ajustar a tensao" not in normalize_text(report.message)
+    assert "verificar excentricidade" not in normalize_text(report.message)
     assert "Antes de qualquer intervenção" not in report.message
     assert "Não realize a intervenção" not in report.message
 
