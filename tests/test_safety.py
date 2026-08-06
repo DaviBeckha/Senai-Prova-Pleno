@@ -111,7 +111,7 @@ def test_conjugacoes_das_novas_intervencoes_geram_orientacao(question):
         "O que significa tensionar uma correia?",
         "O que significa fazer manutenção na correia?",
         "Qual o custo da limpeza da correia?",
-        "A medição da tensão está correta?",
+        "A medição da tensão da correia está correta?",
     ),
 )
 def test_novos_termos_sem_pedido_fisico_nao_acionam_guardrail(question):

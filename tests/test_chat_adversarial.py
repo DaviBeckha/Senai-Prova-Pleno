@@ -607,6 +607,8 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         "Qual o custo do reparo da correia?",
         "Qual a data da troca da correia?",
         "O aperto da correia está correto?",
+        "Qual o custo da limpeza da correia?",
+        "A medição da tensão da correia está correta?",
     ),
 )
 def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
