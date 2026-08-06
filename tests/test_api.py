@@ -177,7 +177,7 @@ def test_chat_expoe_validation_errors_quando_degradado():
     # degraded=True sozinho so diz "modelo fora do ar"; validation_errors
     # preenchido e o que distingue "o modelo respondeu, mas o validador
     # rejeitou o texto por falta de fundamentacao" — prova visual do
-    # anti-alucinacao que o dashboard (Task 2) tambem vai exibir.
+    # anti-alucinacao que o dashboard tambem exibe.
     class FakeChatRejeitado(FakePipeline):
         def answer_question(self, pergunta, mode=None):
             return ChatReport(

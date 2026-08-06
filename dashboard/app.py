@@ -139,7 +139,7 @@ with aba_chat:
                 if resp["fontes"]:
                     st.caption("Fontes: " + ", ".join(resp["fontes"]))
                 redator = resp.get("renderer") or "determinístico"
-                st.caption(f"status: {resp['status']} · redator: {redator}")
+                st.caption(f"status: {resp.get('status', '?')} · redator: {redator}")
                 if resp.get("degraded"):
                     st.warning(
                         "Resposta em modo degradado (modelo indisponível ou "
