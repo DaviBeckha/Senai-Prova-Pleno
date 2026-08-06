@@ -7,10 +7,19 @@ conferencias por passo:
 1. o evidence_id existe no contexto recuperado;
 2. a familia declarada bate com a da evidencia;
 3. a citacao e substring literal do trecho (normalizada);
-4. todo numero da acao aparece na citacao (nada de torque inventado);
+4. todo numero da acao aparece na citacao (nada de torque inventado), tanto
+   em digito quanto por extenso — "noventa N" contra uma citacao de 45 N
+   reprova, porque so contar digitos tornava a conferencia vacua;
 5. a acao e lexicalmente sustentada pela citacao (suporte >= 0.60);
 6. negacao presente em apenas um dos lados (acao ou citacao) reprova —
    inverter o sentido da evidencia tambem e alucinacao.
+
+E duas sobre cada item de `unanswered`, que antes atravessava sem nenhuma
+conferencia: ele nao pode afirmar valor de engenharia (nao ha citacao contra
+o que confronta-lo) e precisa de fato declarar ausencia. O campo e renderizado
+sob "### Limitacoes", sem fonte ao lado e na secao que se le como
+meta-informacao do sistema — instrucao contrabandeada ali chega ao operador
+com menos defesa do que num passo.
 
 Qualquer passo reprovado invalida o rascunho INTEIRO — meia resposta
 fundamentada e meia inventada continua sendo uma resposta inventada.
@@ -39,6 +48,39 @@ _MIN_LEXICAL_SUPPORT = 0.60
 # a citacao ("Nao aplicar...") pode reaproveitar quase todas as palavras da
 # citacao e ainda assim inverter o que ela diz. Verificado a parte.
 _NEGATION_TOKENS = {"nao", "nunca", "jamais"}
+# Numerais por extenso, ja na forma que _normalize produz (sem acento, minusculo).
+_NUMERAIS = {
+    "zero": 0, "um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3,
+    "quatro": 4, "cinco": 5, "seis": 6, "sete": 7, "oito": 8, "nove": 9,
+    "dez": 10, "onze": 11, "doze": 12, "treze": 13, "quatorze": 14,
+    "catorze": 14, "quinze": 15, "dezesseis": 16, "dezessete": 17,
+    "dezoito": 18, "dezenove": 19, "vinte": 20, "trinta": 30,
+    "quarenta": 40, "cinquenta": 50, "sessenta": 60, "setenta": 70,
+    "oitenta": 80, "noventa": 90, "cem": 100, "cento": 100,
+    "duzentos": 200, "trezentos": 300, "quatrocentos": 400,
+    "quinhentos": 500, "mil": 1000,
+}
+# Unidades tecnicas do dominio. "a" (ampere) e "m" (metro) ficam DE FORA de
+# proposito: sao palavras comuns do portugues ("de vinte a trinta"), e o
+# falso positivo delas custa mais que a cobertura que dariam.
+_UNIDADES = (
+    r"(?:nm|n|mm|cm|km|kg|g|rpm|hz|bar|psi|%|min|h|s|graus?)"
+)
+_NUMERAL_ISOLADO = "|".join(sorted(_NUMERAIS, key=len, reverse=True))
+# So conta como valor de engenharia o numeral colado a uma unidade: "noventa N"
+# e afirmacao de torque, "dois parafusos" e linguagem natural. Sem esse recorte,
+# a conferencia numerica viraria fonte de reprovacao por prosa.
+_EXTENSO_COM_UNIDADE = re.compile(
+    rf"\b({_NUMERAL_ISOLADO})(?:\s+e\s+({_NUMERAL_ISOLADO}))?\s+{_UNIDADES}\b"
+)
+_DIGITO_COM_UNIDADE = re.compile(rf"\b\d+(?:[.,]\d+)?\s*{_UNIDADES}\b")
+# Um item de `unanswered` declara o que a evidencia NAO cobre. Sem nenhuma
+# destas marcas, o item nao esta declarando ausencia — esta instruindo.
+_MARCADORES_DE_AUSENCIA = {
+    "nao", "sem", "falta", "faltam", "faltou", "ausente", "ausencia",
+    "nenhum", "nenhuma", "desconhecido", "desconhecida", "indisponivel",
+    "insuficiente", "omite", "silencia",
+}
 
 
 class GroundingValidationError(ValueError):
@@ -50,6 +92,24 @@ def _normalize(value: str) -> str:
     return " ".join(
         "".join(ch for ch in decomposed if not unicodedata.combining(ch)).split()
     )
+
+
+def _valores_numericos(value: str) -> set[float]:
+    """Numeros do texto, vindos de digito OU de numeral por extenso.
+
+    Sem a segunda fonte a conferencia numerica era vacuamente verdadeira
+    quando a acao escrevia o valor por extenso: findall devolvia conjunto
+    vazio, e vazio e subconjunto de qualquer coisa.
+    """
+    normalizado = _normalize(value)
+    valores = {
+        float(bruto.replace(",", "."))
+        for bruto in _NUMBER.findall(normalizado)
+    }
+    for dezena, unidade in _EXTENSO_COM_UNIDADE.findall(normalizado):
+        # "quarenta e cinco" soma as duas partes; "noventa" usa so a primeira.
+        valores.add(float(_NUMERAIS[dezena] + (_NUMERAIS[unidade] if unidade else 0)))
+    return valores
 
 
 def _tokens(value: str) -> set[str]:
@@ -131,7 +191,7 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
             continue
         # Numeros sao o caso mais perigoso: um torque ou uma folga inventada
         # tem consequencia fisica e passa despercebida em texto fluente.
-        if not set(_NUMBER.findall(step.action)) <= set(_NUMBER.findall(step.quote)):
+        if not _valores_numericos(step.action) <= _valores_numericos(step.quote):
             errors.append(f"passo {position}: número sem suporte na citação")
         action_tokens = _tokens(step.action)
         quote_tokens = _tokens(step.quote)
@@ -149,6 +209,21 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
         # sem reduzir o suporte lexical o suficiente para ser barrada acima.
         if bool(action_tokens & _NEGATION_TOKENS) != bool(quote_tokens & _NEGATION_TOKENS):
             errors.append(f"passo {position}: negação sem suporte na citação")
+    # `unanswered` e renderizado sob "### Limitacoes" (ver
+    # format_grounded_draft), sem citacao e sem fonte ao lado. Um passo
+    # inventado chega a tela com evidencia para o operador conferir; um item
+    # daqui nao chega com nada — e ainda ocupa a secao que se le como
+    # meta-informacao do sistema, nao como instrucao.
+    for position, item in enumerate(draft.unanswered, start=1):
+        normalizado = _normalize(item)
+        if _DIGITO_COM_UNIDADE.search(normalizado) or _EXTENSO_COM_UNIDADE.search(normalizado):
+            errors.append(
+                f"limitação {position}: valor técnico sem evidência que o sustente"
+            )
+        if not _tokens(item) & _MARCADORES_DE_AUSENCIA:
+            errors.append(
+                f"limitação {position}: não declara ausência de evidência"
+            )
     if not draft.steps and not draft.unanswered:
         errors.append("rascunho vazio")
     return tuple(errors)
