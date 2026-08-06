@@ -84,6 +84,10 @@ _TENSION_FRAGMENT = rf"tension{_REGULAR_AR_SUFFIX}"
 _LOOSEN_FRAGMENT = rf"solt{_REGULAR_AR_SUFFIX}"
 _CALIBRATE_FRAGMENT = rf"calibr{_REGULAR_AR_SUFFIX}"
 _CLEAN_FRAGMENT = rf"limp{_REGULAR_AR_SUFFIX}"
+_TAKE_OUT_FRAGMENT = rf"(?:re)?tir{_REGULAR_AR_SUFFIX}"
+_NON_PHYSICAL_TAKE_OUT = re.compile(
+    rf"\b(?:{_TAKE_OUT_FRAGMENT})\s+(?:(?:uma|a)\s+)?duvidas?\b"
+)
 _DO_FRAGMENT = (
     r"(?:faz(?:er|endo|ia|ias|iamos|ieis|iam|emos|em)?|"
     r"fac(?:o|a|as|amos|am)|"
@@ -118,9 +122,11 @@ _PASSIVE_AUXILIARY_FRAGMENT = (
     r"estava(?:m)?\s+sendo|estara(?:o)?\s+sendo|"
     r"tem\s+sido|tinha(?:m)?\s+sido)"
 )
+_REPLACEMENT_PARTICIPLE_FRAGMENT = r"(?:re)?tirad[oa]s?"
 _PASSIVE_ACTION_PARTICIPLE_FRAGMENT = (
     r"(?:toc|encost|manipul|pux|estic|tension|solt|calibr)ad[oa]s?|"
-    r"solt[oa]s?|limpad[oa]s?|limp[oa]s?"
+    r"solt[oa]s?|limpad[oa]s?|limp[oa]s?|"
+    rf"{_REPLACEMENT_PARTICIPLE_FRAGMENT}"
 )
 _PRESENT_PASSIVE_PARTICIPLE_FRAGMENT = (
     rf"(?:{_PASSIVE_ACTION_PARTICIPLE_FRAGMENT}|"
@@ -160,6 +166,10 @@ _PASSIVE_ADJUSTMENT_INTERVENTION = re.compile(
 _PASSIVE_REPAIR_INTERVENTION = re.compile(
     rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+"
     rf"(?:{_REPAIR_PARTICIPLE_FRAGMENT})\b"
+)
+_PASSIVE_REPLACEMENT_INTERVENTION = re.compile(
+    rf"\b{_PASSIVE_AUXILIARY_FRAGMENT}\s+"
+    rf"(?:{_REPLACEMENT_PARTICIPLE_FRAGMENT})\b"
 )
 _PASSIVE_TENSION_MEASUREMENT = re.compile(
     rf"(?:\btensao\b[^?.;]{{0,80}}\b"
@@ -208,7 +218,10 @@ _ACTION_PATTERNS = (
     (MaintenanceAction.LUBRICATE, re.compile(r"\b(?:lubrific\w*|relubrific\w*)\b")),
     (
         MaintenanceAction.REPLACE,
-        re.compile(r"\b(?:substitu\w*|troc\w*|troqu\w*|remov\w*|instal\w*)\b"),
+        re.compile(
+            rf"\b(?:substitu\w*|troc\w*|troqu\w*|remov\w*|"
+            rf"{_TAKE_OUT_FRAGMENT}|instal\w*)\b"
+        ),
     ),
     (MaintenanceAction.VALIDATE, re.compile(r"\b(?:valid\w*|confirm\w*|test\w*)\b")),
     (
@@ -245,6 +258,7 @@ _EXPLICIT_PHYSICAL_FRAGMENT = (
     r"substitu(?:ir|indo|iu|o|a|am|i|em|imos|iram|ia|iam)|"
     r"corrig(?:ir|indo|iu|o|e|em|imos|iram|ia|iam)|corrij(?:a|am|o)|"
     r"troc(?:ar|ando|ou|o|amos|aram|ava|avam)|troqu(?:e|em)|"
+    rf"{_TAKE_OUT_FRAGMENT}|"
     rf"{_ADDITIONAL_PHYSICAL_FRAGMENT}|"
     rf"{_MAINTENANCE_PHRASE_FRAGMENT}|"
     rf"{_TENSION_MEASUREMENT_FRAGMENT}"
@@ -373,8 +387,12 @@ def _contextual_present_passive_matches(
     )
 
 
+def _without_non_physical_take_out(normalized: str) -> str:
+    return _NON_PHYSICAL_TAKE_OUT.sub(" duvida ", normalized)
+
+
 def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
-    normalized = normalize_text(value)
+    normalized = _without_non_physical_take_out(normalize_text(value))
     # "verificações de segurança" descreve o tema da pergunta, não uma
     # inspeção de manutenção. Removemos somente essa expressão para ainda
     # preservar ações explícitas adicionais, como "inspecionar a correia".
@@ -388,12 +406,16 @@ def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
         actions.append(MaintenanceAction.ADJUST)
     if _PASSIVE_REPAIR_INTERVENTION.search(normalized):
         actions.append(MaintenanceAction.REPAIR)
+    if _PASSIVE_REPLACEMENT_INTERVENTION.search(normalized):
+        actions.append(MaintenanceAction.REPLACE)
     for match in _contextual_present_passive_matches(normalized):
         participle = match.group("participle")
         if re.fullmatch(_ADJUSTMENT_PARTICIPLE_FRAGMENT, participle):
             actions.append(MaintenanceAction.ADJUST)
         elif re.fullmatch(_REPAIR_PARTICIPLE_FRAGMENT, participle):
             actions.append(MaintenanceAction.REPAIR)
+        elif re.fullmatch(_REPLACEMENT_PARTICIPLE_FRAGMENT, participle):
+            actions.append(MaintenanceAction.REPLACE)
         elif re.fullmatch(r"medid[oa]s?", participle):
             actions.append(MaintenanceAction.INSPECT)
         elif (
@@ -512,7 +534,7 @@ def _has_follow_up_physical_action(
 
 
 def has_explicit_physical_intervention(value: str) -> bool:
-    normalized = normalize_text(value)
+    normalized = _without_non_physical_take_out(normalize_text(value))
     if (
         _COORDINATED_IMPERATIVE.search(normalized)
         or _AMBIGUOUS_IMPERATIVE.match(normalized)

@@ -63,6 +63,39 @@ def test_variacoes_de_mexer_com_maquina_ligada_geram_orientacao(question):
 @pytest.mark.parametrize(
     "question",
     (
+        "certo, eu quero tirar a polia com a maquina ligada como faco?",
+        "Posso retirar a polia com o motor ligado?",
+        "Tire a polia com a máquina ligada.",
+        "A polia foi retirada com o motor ligado.",
+    ),
+)
+def test_tirar_ou_retirar_peca_com_maquina_ligada_gera_orientacao(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION
+    assert "Não realize a intervenção" in decision.message
+    assert "desligue completamente" in decision.message
+    assert "bloqueio" in decision.message
+    assert "ausência de energia" in decision.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Quero tirar uma dúvida sobre a polia com o motor ligado.",
+        "Quero retirar uma dúvida sobre a polia com o motor ligado.",
+    ),
+)
+def test_tirar_ou_retirar_uma_duvida_nao_e_intervencao(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ALLOW
+    assert decision.message == ""
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
         "Posso tocar na correia com o motor ligado?",
         "Posso encostar na correia com o motor ligado?",
         "Posso manipular a correia com o motor ligado?",

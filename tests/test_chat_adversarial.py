@@ -239,6 +239,16 @@ def _assert_live_safety_guidance(report):
     assert "ajustar a tensao da correia" not in report.message
 
 
+def test_tirar_polia_com_maquina_ligada_e_interceptado_antes_do_modelo():
+    pipeline = _pipeline(_df(["polia"]), {"polia"}, {"polia": CORREIA_CHUNK})
+
+    report = pipeline.answer_question(
+        "certo, eu quero tirar a polia com a maquina ligada como faco?"
+    )
+
+    _assert_live_safety_guidance(report)
+
+
 @pytest.mark.parametrize("verbo", _VERBOS_DE_INTERVENCAO)
 def test_intervencao_com_motor_ligado_e_orientada_para_cada_verbo(verbo):
     # Fixa o marcador ("motor ligado") e varia o verbo: prova que a orientacao
@@ -740,8 +750,8 @@ def test_voz_passiva_preserva_categoria_da_acao(
     assert analysis.requested_actions == (expected_action,)
 
 
-@pytest.mark.parametrize("verb", ("remover", "instalar"))
-def test_remover_e_instalar_sao_intervencoes_de_substituicao(verb):
+@pytest.mark.parametrize("verb", ("remover", "tirar", "retirar", "instalar"))
+def test_verbos_de_remocao_e_instalacao_sao_intervencoes_de_substituicao(verb):
     analysis = analyze_question(f"Como {verb} uma correia?")
 
     assert analysis.requested_actions == ("replace",)
