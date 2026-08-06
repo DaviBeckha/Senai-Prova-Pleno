@@ -1,7 +1,7 @@
 import re
 from enum import StrEnum
 
-from app.chat.normalization import normalize_text
+from app.core.text import normalize_text
 
 
 class MaintenanceAction(StrEnum):
@@ -13,6 +13,18 @@ class MaintenanceAction(StrEnum):
     REPAIR = "repair"
     REPLACE = "replace"
     VALIDATE = "validate"
+
+
+class ContentRole(StrEnum):
+    SAFETY = "safety"
+    DIAGNOSIS = "diagnosis"
+    INSPECTION = "inspection"
+    ADJUSTMENT = "adjustment"
+    ALIGNMENT = "alignment"
+    LUBRICATION = "lubrication"
+    REPLACEMENT = "replacement"
+    VALIDATION = "validation"
+    GENERAL = "general"
 
 
 _ACTION_PATTERNS = (
@@ -70,3 +82,40 @@ def detect_conditions(value: str) -> frozenset[str]:
 
 def is_safety_request(value: str) -> bool:
     return bool(_SAFETY_REQUEST.search(normalize_text(value)))
+
+
+def classify_content_role(
+    section_path: tuple[str, ...],
+    text: str,
+) -> ContentRole:
+    path = normalize_text(" ".join(section_path))
+    content = normalize_text(text)
+
+    path_rules = (
+        (ContentRole.SAFETY, r"\bseguranca\b"),
+        (ContentRole.VALIDATION, r"\b(?:validacao|criterios? de aceitacao)\b"),
+        (ContentRole.REPLACEMENT, r"\b(?:substituicao|instalacao d[oa] nov)\w*\b"),
+        (ContentRole.ALIGNMENT, r"\balinhamento\b"),
+        (ContentRole.LUBRICATION, r"\b(?:lubrificacao|relubrificacao)\b"),
+        (ContentRole.ADJUSTMENT, r"\b(?:ajuste|tensao|correia frouxa)\b"),
+        (ContentRole.INSPECTION, r"\b(?:inspecao|verificacao)\b"),
+        (ContentRole.DIAGNOSIS, r"\b(?:diagnostico|sintomas|tipos? de falhas?)\b"),
+    )
+    for role, pattern in path_rules:
+        if re.search(pattern, path):
+            return role
+
+    content_rules = (
+        (ContentRole.SAFETY, r"\b(?:bloqueio|etiquetagem|ausencia de energia)\b"),
+        (ContentRole.REPLACEMENT, r"\b(?:substituir|remover .* antiga|instalar nov)\w*\b"),
+        (ContentRole.ALIGNMENT, r"\b(?:alinhar|alinhamento)\b"),
+        (ContentRole.LUBRICATION, r"\b(?:lubrificar|relubrificar)\b"),
+        (ContentRole.ADJUSTMENT, r"\b(?:ajustar|reapertar|tensao recomendada)\b"),
+        (ContentRole.VALIDATION, r"\b(?:validar|criterios? de aceitacao)\b"),
+        (ContentRole.INSPECTION, r"\b(?:inspecionar|verificar)\b"),
+        (ContentRole.DIAGNOSIS, r"\b(?:diagnosticar|causas?|sintomas?)\b"),
+    )
+    for role, pattern in content_rules:
+        if re.search(pattern, content):
+            return role
+    return ContentRole.GENERAL
