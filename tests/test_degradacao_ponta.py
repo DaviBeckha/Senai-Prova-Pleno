@@ -11,9 +11,10 @@ entrevista, nao so que a classe Router sabe degradar em isolamento.
 Contrato conferido em app/api/schemas.py antes de escrever este teste:
 `DiagnosisOut` (response_model de `POST /eventos` em app/api/main.py) JA expõe
 `degraded: bool` e `renderer: str | None` — nao ha lacuna de contrato aqui.
-Lacuna diferente, fora do escopo deste teste: em ChatOut (mesmo arquivo) so
-existe `degraded`, sem `renderer`, mesmo o ChatReport interno ja carregando os
-dois campos.
+`ChatOut` (mesmo arquivo, response_model de `POST /chat`) tambem expõe os
+dois campos, alem de `status`, `families`, `limitations` e
+`validation_errors` do `ChatReport` interno — fora do escopo deste teste,
+que cobre so `/eventos`.
 """
 
 import json

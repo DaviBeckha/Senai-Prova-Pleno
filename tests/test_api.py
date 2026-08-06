@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api.main import create_app, get_state
 from app.api.state import AppState
+from app.chat.types import ChatReport
 from app.core.config import get_settings
 from app.data.loader import FEATURE_COLUMNS
 from app.data.models import Base, Diagnosis, Event
@@ -26,9 +27,17 @@ class FakePipeline:
 
     def answer_question(self, pergunta, mode=None):
         self.last_mode = mode
-        return DiagnosisReport("diagnostico", "correia", "ajustar tensao",
-                               10, 1.5, ["Doc4.pdf"], "template", False,
-                               {"correia": 10})
+        # answer_question() do pipeline real devolve ChatReport (nao
+        # DiagnosisReport) — sao contratos diferentes; usar o tipo certo aqui
+        # evita que o fake mascare os campos novos do endpoint /chat.
+        return ChatReport(
+            status="answered",
+            message="ajustar tensao",
+            families=("correia",),
+            sources=("Doc4.pdf",),
+            renderer="template",
+            degraded=False,
+        )
 
 
 def _client():
@@ -111,17 +120,84 @@ def test_eventos_modo_invalido_retorna_422():
 
 
 def test_chat_fora_do_dominio():
-    # FakePipeline com answer_question que retorna sem_documento
+    # FakePipeline com answer_question que retorna undocumented (status real
+    # de app/chat/responses.py::undocumented_report — "sem_documento" e do
+    # DiagnosisReport de /eventos, um contrato diferente).
     class FakeChatPipeline(FakePipeline):
         def answer_question(self, pergunta, mode=None):
-            return DiagnosisReport("sem_documento", "desconhecido",
-                                   "Problema ainda não documentado...", 0, 0.0,
-                                   [], None, False, {})
+            return ChatReport(
+                status="undocumented",
+                message="Problema ainda não documentado...",
+                families=("desconhecido",),
+            )
     app = create_app(skip_bootstrap=True)
     state = AppState(pipeline=FakeChatPipeline(), registry=None, index=None, df=None)
     app.dependency_overrides[get_state] = lambda: state
     r = TestClient(app).post("/chat", json={"pergunta": "e a fase eletrica?"})
-    assert "não documentado" in r.json()["resposta"]
+    data = r.json()
+    assert "não documentado" in data["resposta"]
+    assert data["status"] == "undocumented"
+
+
+def test_chat_expoe_contrato_completo():
+    # ChatReport completo (families, renderer, limitations preenchidos) deve
+    # atravessar o endpoint inteiro ate o JSON — e o coracao da distincao
+    # entre "resposta fundamentada" e os outros desfechos (RF4 anti-alucinacao).
+    class FakeChatCompleto(FakePipeline):
+        def answer_question(self, pergunta, mode=None):
+            return ChatReport(
+                status="answered",
+                message="- Ajustar tensão [Doc4.pdf — seção 9.1; evidência correia:E1]",
+                families=("correia",),
+                sources=("Doc4.pdf",),
+                renderer="ollama",
+                degraded=False,
+                limitations=("a evidência não cobre torque exato",),
+                validation_errors=(),
+            )
+    app = create_app(skip_bootstrap=True)
+    state = AppState(pipeline=FakeChatCompleto(), registry=None, index=None, df=None)
+    app.dependency_overrides[get_state] = lambda: state
+    r = TestClient(app).post("/chat", json={"pergunta": "como corrigir correia?"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "answered"
+    assert data["resposta"] == (
+        "- Ajustar tensão [Doc4.pdf — seção 9.1; evidência correia:E1]"
+    )
+    assert data["families"] == ["correia"]
+    assert data["fontes"] == ["Doc4.pdf"]
+    assert data["renderer"] == "ollama"
+    assert data["degraded"] is False
+    assert data["limitations"] == ["a evidência não cobre torque exato"]
+    assert data["validation_errors"] == []
+
+
+def test_chat_expoe_validation_errors_quando_degradado():
+    # degraded=True sozinho so diz "modelo fora do ar"; validation_errors
+    # preenchido e o que distingue "o modelo respondeu, mas o validador
+    # rejeitou o texto por falta de fundamentacao" — prova visual do
+    # anti-alucinacao que o dashboard tambem exibe.
+    class FakeChatRejeitado(FakePipeline):
+        def answer_question(self, pergunta, mode=None):
+            return ChatReport(
+                status="answered",
+                message="Resposta de contenção (modelo indisponível ou rejeitado).",
+                families=("correia",),
+                sources=("Doc4.pdf",),
+                renderer="template",
+                degraded=True,
+                validation_errors=("trecho sem referencia a nenhuma fonte recuperada",),
+            )
+    app = create_app(skip_bootstrap=True)
+    state = AppState(pipeline=FakeChatRejeitado(), registry=None, index=None, df=None)
+    app.dependency_overrides[get_state] = lambda: state
+    r = TestClient(app).post("/chat", json={"pergunta": "como corrigir correia?"})
+    data = r.json()
+    assert data["degraded"] is True
+    assert data["validation_errors"] == [
+        "trecho sem referencia a nenhuma fonte recuperada"
+    ]
 
 
 def test_chat_modo_online_chega_ao_pipeline():

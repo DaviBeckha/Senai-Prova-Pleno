@@ -138,6 +138,22 @@ with aba_chat:
                 st.write(resp["resposta"])
                 if resp["fontes"]:
                     st.caption("Fontes: " + ", ".join(resp["fontes"]))
+                redator = resp.get("renderer") or "determinístico"
+                st.caption(f"status: {resp.get('status', '?')} · redator: {redator}")
+                if resp.get("degraded"):
+                    st.warning(
+                        "Resposta em modo degradado (modelo indisponível ou "
+                        "rejeitado pela validação)."
+                    )
+                if resp.get("validation_errors"):
+                    st.caption(
+                        "Motivos da rejeição: "
+                        + "; ".join(resp["validation_errors"])
+                    )
+                if resp.get("limitations"):
+                    st.caption("Limitações:")
+                    for limitacao in resp["limitations"]:
+                        st.caption(f"- {limitacao}")
         except httpx.ConnectError:
             st.error("API indisponível — suba a API com uvicorn app.api.main:app")
         except Exception as e:
