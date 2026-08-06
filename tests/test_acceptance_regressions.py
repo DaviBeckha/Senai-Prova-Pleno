@@ -434,8 +434,25 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Limpei a correia com o motor ligado.",
         "Medi a tensão da correia com o motor ligado.",
         "Faço manutenção na correia com o motor ligado.",
+        "Nós limpávamos a correia com o motor ligado.",
+        "Eles limparão a correia com o motor ligado.",
+        "Façamos manutenção na correia com o motor ligado.",
+        "Mediremos a tensão da correia com o motor ligado.",
         (
             "O que significa tensionar e posso limpar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar, mas estou limpando a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e como limpar a correia "
+            "com o motor ligado?"
+        ),
+        "O que é recomendado para limpar a correia com o motor ligado?",
+        (
+            "O que é indicado para medir a tensão da correia "
             "com o motor ligado?"
         ),
     ),

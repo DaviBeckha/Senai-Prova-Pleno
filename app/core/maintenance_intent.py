@@ -63,39 +63,49 @@ REPLACEMENT_CONDITIONS = frozenset({
 })
 
 
+_REGULAR_AR_SUFFIX = (
+    r"(?:ar|ares|armos|ardes|arem|ando|ad[oa]s?|"
+    r"o|a|as|amos|ais|am|ei|aste|ou|astes|aram|"
+    r"ava|avas|avamos|aveis|avam|"
+    r"ara|aras|aramos|areis|arao|arei|aremos|"
+    r"aria|arias|ariamos|arieis|ariam|"
+    r"e|es|emos|eis|em|asse|asses|assemos|asseis|assem)"
+)
 _TOUCH_FRAGMENT = (
-    r"toc(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|"
-    r"toqu(?:e|em|ei)"
+    rf"toc{_REGULAR_AR_SUFFIX}|toqu(?:e|es|emos|eis|em|ei)"
 )
-_LEAN_FRAGMENT = (
-    r"encost(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
-)
-_HANDLE_FRAGMENT = (
-    r"manipul(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
-)
-_PULL_FRAGMENT = r"pux(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
+_LEAN_FRAGMENT = rf"encost{_REGULAR_AR_SUFFIX}"
+_HANDLE_FRAGMENT = rf"manipul{_REGULAR_AR_SUFFIX}"
+_PULL_FRAGMENT = rf"pux{_REGULAR_AR_SUFFIX}"
 _STRETCH_FRAGMENT = (
-    r"estic(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|estiqu(?:e|em|ei)"
+    rf"estic{_REGULAR_AR_SUFFIX}|estiqu(?:e|es|emos|eis|em|ei)"
 )
-_TENSION_FRAGMENT = (
-    r"tension(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
-)
-_LOOSEN_FRAGMENT = (
-    r"solt(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
-)
-_CALIBRATE_FRAGMENT = (
-    r"calibr(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
-)
-_CLEAN_FRAGMENT = (
-    r"limp(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
+_TENSION_FRAGMENT = rf"tension{_REGULAR_AR_SUFFIX}"
+_LOOSEN_FRAGMENT = rf"solt{_REGULAR_AR_SUFFIX}"
+_CALIBRATE_FRAGMENT = rf"calibr{_REGULAR_AR_SUFFIX}"
+_CLEAN_FRAGMENT = rf"limp{_REGULAR_AR_SUFFIX}"
+_DO_FRAGMENT = (
+    r"(?:faz(?:er|endo|ia|ias|iamos|ieis|iam|emos|em)?|"
+    r"fac(?:o|a|as|amos|am)|"
+    r"fiz(?:este|emos|estes|eram|esse|esses|essemos|esseis|essem|"
+    r"er|eres|ermos|erdes|erem)?|"
+    r"fez|far(?:ei|as|a|emos|eis|ao|ia|ias|iamos|ieis|iam)|"
+    r"feit[oa]s?)"
 )
 _MAINTENANCE_PHRASE_FRAGMENT = (
-    r"(?:faz(?:er|endo|ia|iam|emos|em)?|fac(?:o|a|am)|"
-    r"fiz(?:emos|eram)?|fez)\s+(?:a\s+)?manutencao"
+    rf"{_DO_FRAGMENT}\s+(?:a\s+)?manutencao"
+)
+_MEASURE_FRAGMENT = (
+    r"(?:med(?:ir|ires|irmos|irdes|irem|indo|id[oa]s?|"
+    r"e|es|imos|is|em|i|iste|iu|istes|iram|"
+    r"ia|ias|iamos|ieis|iam|"
+    r"irei|iras|ira|iremos|ireis|irao|"
+    r"iria|irias|iriamos|irieis|iriam|"
+    r"isse|isses|issemos|isseis|issem)|"
+    r"mec(?:o|a|as|amos|am))"
 )
 _TENSION_MEASUREMENT_FRAGMENT = (
-    r"(?:med(?:ir|indo|iu|i|e|em|imos|iram|ia|iam)|"
-    r"mec(?:o|a|am))\s+(?:a\s+)?tensao"
+    rf"{_MEASURE_FRAGMENT}\s+(?:a\s+)?tensao"
 )
 _ADDITIONAL_PHYSICAL_FRAGMENT = "|".join((
     _TOUCH_FRAGMENT,
@@ -194,24 +204,22 @@ _EXPLANATION_REQUEST = re.compile(
     r"|\b(?:como funciona|qual (?:e )?a funcao|o que faz|fale sobre)\b"
 )
 _PURE_CONCEPTUAL_REQUEST = re.compile(
-    r"^(?:"
+    rf"^(?:"
     r"o que significa\b|"
-    r"o que e\s+(?!necessari[oa]s?\b|precis[oa]s?\b)|"
+    rf"o que e\s+(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b|"
     r"qual (?:e )?a (?:definicao|funcao|diferenca)\b|"
     r"para que serve\b|como funciona\b|o que faz\b|fale sobre\b|"
     r"defina\b|conceitue\b|"
     r"explique(?:\s+para mim)?\s+(?:"
     r"o que significa\b|"
-    r"o que e\s+(?!necessari[oa]s?\b|precis[oa]s?\b)|"
+    rf"o que e\s+(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b|"
     r"qual (?:e )?a (?:definicao|funcao|diferenca)\b|"
     r"para que serve\b|como funciona\b"
     r")"
     r")"
 )
-_CONCEPTUAL_FOLLOW_UP_ACTION = re.compile(
-    r"\b(?:e|mas|ou|tambem|depois|entao)\s+"
-    r"(?:(?:eu|nos)\s+)?"
-    r"(?:posso|devo|preciso|quero|vou|vamos|pretendo)\b"
+_CONCEPTUAL_CLAUSE_SEPARATOR = re.compile(
+    r"\b(?:e|mas|ou|tambem|depois|entao)\b"
 )
 _PROCEDURAL_NOMINAL_CUE = re.compile(
     r"\b(?:procedimento|passo a passo|etapas?|forma de)\b"
@@ -312,6 +320,19 @@ def is_factual_request(value: str) -> bool:
     )
 
 
+def _has_follow_up_physical_action(normalized: str) -> bool:
+    clauses = _CONCEPTUAL_CLAUSE_SEPARATOR.split(normalized)[1:]
+    for raw_clause in clauses:
+        clause = raw_clause.lstrip(" ,;:")
+        clause = re.sub(r"^por favor\s+", "", clause)
+        if (
+            _EXPLICIT_PHYSICAL_INTERVENTION.search(clause)
+            or _AMBIGUOUS_IMPERATIVE.match(clause)
+        ):
+            return True
+    return False
+
+
 def has_explicit_physical_intervention(value: str) -> bool:
     normalized = normalize_text(value)
     if (
@@ -321,7 +342,7 @@ def has_explicit_physical_intervention(value: str) -> bool:
         return True
     if (
         _PURE_CONCEPTUAL_REQUEST.match(normalized)
-        and not _CONCEPTUAL_FOLLOW_UP_ACTION.search(normalized)
+        and not _has_follow_up_physical_action(normalized)
     ):
         return False
     return bool(_EXPLICIT_PHYSICAL_INTERVENTION.search(normalized))

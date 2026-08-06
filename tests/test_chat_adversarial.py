@@ -651,6 +651,10 @@ def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question)
             "Explique o que significa fazer manutenção na correia "
             "com o motor ligado."
         ),
+        (
+            "O que significa tensionar e posso chamar isso de ajuste "
+            "da correia com o motor ligado?"
+        ),
     ),
 )
 def test_novos_verbos_em_pergunta_conceitual_continuam_explicacao(question):
