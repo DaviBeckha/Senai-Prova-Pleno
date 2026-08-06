@@ -414,6 +414,17 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Alinhe a polia para o valor recomendado com o motor ligado.",
         "Aperte o parafuso para o valor recomendado com o motor ligado.",
         "Lubrifique o rolamento pelo menor custo com o motor ligado.",
+        "Posso tocar na correia com o motor ligado?",
+        "Posso encostar na correia com o motor ligado?",
+        "Posso manipular a correia com o motor ligado?",
+        "Posso fazer manutenção na correia com o motor ligado?",
+        "Posso puxar a correia com o motor ligado?",
+        "Posso esticar a correia com o motor ligado?",
+        "Posso tensionar a correia com o motor ligado?",
+        "Posso soltar a correia com o motor ligado?",
+        "Posso calibrar a correia com o motor ligado?",
+        "Posso limpar a correia com o motor ligado?",
+        "Posso medir a tensão da correia com o motor ligado?",
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):

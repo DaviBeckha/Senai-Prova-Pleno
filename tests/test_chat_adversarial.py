@@ -619,6 +619,20 @@ def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question)
 @pytest.mark.parametrize(
     "question",
     (
+        "O que significa tensionar uma correia?",
+        "O que significa fazer manutenção na correia?",
+    ),
+)
+def test_novos_verbos_em_pergunta_conceitual_continuam_explicacao(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.EXPLANATION
+    assert analysis.requested_actions == ()
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
         "Como ajustar a correia para o valor recomendado com o motor ligado?",
         "Qual o custo para trocar a correia com o motor ligado?",
     ),

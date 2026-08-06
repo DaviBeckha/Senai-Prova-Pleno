@@ -63,9 +63,61 @@ REPLACEMENT_CONDITIONS = frozenset({
 })
 
 
+_TOUCH_FRAGMENT = (
+    r"toc(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|"
+    r"toqu(?:e|em|ei)"
+)
+_LEAN_FRAGMENT = r"encost(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_HANDLE_FRAGMENT = r"manipul(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_PULL_FRAGMENT = r"pux(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_STRETCH_FRAGMENT = (
+    r"estic(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|estiqu(?:e|em|ei)"
+)
+_TENSION_FRAGMENT = (
+    r"tension(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+)
+_LOOSEN_FRAGMENT = r"solt(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_CALIBRATE_FRAGMENT = (
+    r"calibr(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+)
+_CLEAN_FRAGMENT = r"limp(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_MAINTENANCE_PHRASE_FRAGMENT = (
+    r"(?:faz(?:er|endo|ia|iam|emos|em)?|fac(?:a|am)|"
+    r"fiz(?:emos|eram)?|fez)\s+(?:a\s+)?manutencao"
+)
+_TENSION_MEASUREMENT_FRAGMENT = (
+    r"(?:med(?:ir|indo|iu|e|em|imos|iram|ia|iam)|"
+    r"mec(?:o|a|am))\s+(?:a\s+)?tensao"
+)
+_ADDITIONAL_PHYSICAL_FRAGMENT = "|".join((
+    _TOUCH_FRAGMENT,
+    _LEAN_FRAGMENT,
+    _HANDLE_FRAGMENT,
+    _PULL_FRAGMENT,
+    _STRETCH_FRAGMENT,
+    _TENSION_FRAGMENT,
+    _LOOSEN_FRAGMENT,
+    _CALIBRATE_FRAGMENT,
+    _CLEAN_FRAGMENT,
+))
+
+
 _ACTION_PATTERNS = (
-    (MaintenanceAction.INSPECT, re.compile(r"\b(?:inspecion\w*|verific\w*)\b")),
-    (MaintenanceAction.ADJUST, re.compile(r"\b(?:ajust\w*|apert\w*|reapert\w*)\b")),
+    (
+        MaintenanceAction.INSPECT,
+        re.compile(
+            rf"\b(?:inspecion\w*|verific\w*|"
+            rf"{_TENSION_MEASUREMENT_FRAGMENT})\b"
+        ),
+    ),
+    (
+        MaintenanceAction.ADJUST,
+        re.compile(
+            rf"\b(?:ajust\w*|apert\w*|reapert\w*|{_PULL_FRAGMENT}|"
+            rf"{_STRETCH_FRAGMENT}|{_TENSION_FRAGMENT}|"
+            rf"{_LOOSEN_FRAGMENT}|{_CALIBRATE_FRAGMENT})\b"
+        ),
+    ),
     (MaintenanceAction.ALIGN, re.compile(r"\b(?:alinh\w*)\b")),
     (MaintenanceAction.LUBRICATE, re.compile(r"\b(?:lubrific\w*|relubrific\w*)\b")),
     (
@@ -81,7 +133,9 @@ _ACTION_PATTERNS = (
         MaintenanceAction.REPAIR,
         re.compile(
             r"\b(?:corrij\w*|corrig\w*|consert\w*|repar\w*|trat\w*|"
-            r"procedimento)\b"
+            rf"procedimento|{_TOUCH_FRAGMENT}|{_LEAN_FRAGMENT}|"
+            rf"{_HANDLE_FRAGMENT}|{_CLEAN_FRAGMENT}|"
+            rf"{_MAINTENANCE_PHRASE_FRAGMENT})\b"
         ),
     ),
 )
@@ -102,7 +156,10 @@ _EXPLICIT_PHYSICAL_FRAGMENT = (
     r"abr(?:ir|a|am|e|em|o|i|imos|iram|ia|iam|indo|iu)|abert[oa]s?|"
     r"substitu(?:ir|indo|iu|o|a|am|i|em|imos|iram|ia|iam)|"
     r"corrig(?:ir|indo|iu|o|e|em|imos|iram|ia|iam)|corrij(?:a|am|o)|"
-    r"troc(?:ar|ando|ou|o|amos|aram|ava|avam)|troqu(?:e|em)"
+    r"troc(?:ar|ando|ou|o|amos|aram|ava|avam)|troqu(?:e|em)|"
+    rf"{_ADDITIONAL_PHYSICAL_FRAGMENT}|"
+    rf"{_MAINTENANCE_PHRASE_FRAGMENT}|"
+    rf"{_TENSION_MEASUREMENT_FRAGMENT}"
 )
 _EXPLICIT_PHYSICAL_INTERVENTION = re.compile(
     rf"\b(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b"
@@ -110,7 +167,11 @@ _EXPLICIT_PHYSICAL_INTERVENTION = re.compile(
 _AMBIGUOUS_IMPERATIVE_FRAGMENT = (
     r"ajust(?:e|em)|(?:re)?apert(?:e|em)|alinh(?:e|em)|"
     r"(?:re)?lubrifiqu(?:e|em)|"
-    r"(?:repar|consert|trat|instal|desmont)(?:e|em)"
+    r"(?:repar|consert|trat|instal|desmont)(?:e|em)|"
+    r"toqu(?:e|em)|encost(?:e|em)|manipul(?:e|em)|pux(?:e|em)|"
+    r"estiqu(?:e|em)|tension(?:e|em)|solt(?:e|em)|calibr(?:e|em)|"
+    r"limp(?:e|em)|fac(?:a|am)\s+(?:a\s+)?manutencao|"
+    r"mec(?:a|am)\s+(?:a\s+)?tensao"
 )
 _AMBIGUOUS_IMPERATIVE = re.compile(
     rf"\b(?:{_AMBIGUOUS_IMPERATIVE_FRAGMENT})\b"
@@ -123,6 +184,9 @@ _EXPLANATION_REQUEST = re.compile(
     r"\b(?:o que significa|o que (?:e|sao)|qual (?:e )?a definicao|"
     r"qual (?:e )?a diferenca|para que serve|explique|defina|conceitue)\b"
     r"|\b(?:como funciona|qual (?:e )?a funcao|o que faz|fale sobre)\b"
+)
+_PURE_CONCEPTUAL_REQUEST = re.compile(
+    r"^(?:o que significa|qual (?:e )?a definicao|defina|conceitue)\b"
 )
 _PROCEDURAL_NOMINAL_CUE = re.compile(
     r"\b(?:procedimento|passo a passo|etapas?|forma de)\b"
@@ -225,11 +289,14 @@ def is_factual_request(value: str) -> bool:
 
 def has_explicit_physical_intervention(value: str) -> bool:
     normalized = normalize_text(value)
-    return bool(
-        _EXPLICIT_PHYSICAL_INTERVENTION.search(normalized)
-        or _COORDINATED_IMPERATIVE.search(normalized)
+    if (
+        _COORDINATED_IMPERATIVE.search(normalized)
         or _AMBIGUOUS_IMPERATIVE.match(normalized)
-    )
+    ):
+        return True
+    if _PURE_CONCEPTUAL_REQUEST.match(normalized):
+        return False
+    return bool(_EXPLICIT_PHYSICAL_INTERVENTION.search(normalized))
 
 
 def is_safety_only_request(value: str) -> bool:

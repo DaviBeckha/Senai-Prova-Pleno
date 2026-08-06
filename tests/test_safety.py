@@ -60,6 +60,67 @@ def test_variacoes_de_mexer_com_maquina_ligada_geram_orientacao(question):
     assert "ausência de energia" in decision.message
 
 
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Posso tocar na correia com o motor ligado?",
+        "Posso encostar na correia com o motor ligado?",
+        "Posso manipular a correia com o motor ligado?",
+        "Posso fazer manutenção na correia com o motor ligado?",
+        "Posso puxar a correia com o motor ligado?",
+        "Posso esticar a correia com o motor ligado?",
+        "Posso tensionar a correia com o motor ligado?",
+        "Posso soltar a correia com o motor ligado?",
+        "Posso calibrar a correia com o motor ligado?",
+        "Posso limpar a correia com o motor ligado?",
+        "Posso medir a tensão da correia com o motor ligado?",
+    ),
+)
+def test_novas_intervencoes_com_maquina_ligada_geram_orientacao(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION
+    assert "Não realize a intervenção" in decision.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Toque na correia com o motor ligado.",
+        "Estou encostando na correia com o motor ligado.",
+        "Manipule a correia com o motor ligado.",
+        "Faça manutenção na correia com o motor ligado.",
+        "Puxe a correia com o motor ligado.",
+        "Estou esticando a correia com o motor ligado.",
+        "Tensione a correia com o motor ligado.",
+        "Solte a correia com o motor ligado.",
+        "Calibre a correia com o motor ligado.",
+        "Limpe a correia com o motor ligado.",
+        "Meça a tensão da correia com o motor ligado.",
+    ),
+)
+def test_conjugacoes_das_novas_intervencoes_geram_orientacao(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que significa tensionar uma correia?",
+        "O que significa fazer manutenção na correia?",
+        "Qual o custo da limpeza da correia?",
+        "A medição da tensão está correta?",
+    ),
+)
+def test_novos_termos_sem_pedido_fisico_nao_acionam_guardrail(question):
+    decision = assess_question_safety(question)
+
+    assert decision.outcome is SafetyOutcome.ALLOW
+    assert decision.message == ""
+
+
 def test_intervencao_normal_gera_aviso_preventivo():
     decision = assess_question_safety("Como trocar a correia?")
 
