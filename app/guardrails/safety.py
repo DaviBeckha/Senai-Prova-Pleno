@@ -51,15 +51,28 @@ LIVE_INTERVENTION_GUIDANCE = (
 )
 
 
+# Radicais amplos como ``ajust\w*`` tambem casam substantivos ("ajustes") e
+# podem substituir uma consulta historica por uma orientacao de risco. As
+# terminacoes abaixo aceitam apenas formas verbais comuns. A pequena excecao
+# nominal "de ajuste" e removida antes da busca porque "ajuste" tambem e uma
+# forma valida do imperativo.
+_AR_FORMS = r"(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_ER_FORMS = r"(?:er|endo|eu|o|a|am|e|em|emos|eram|ia|iam)"
+_IR_FORMS = r"(?:ir|indo|iu|o|a|am|e|em|imos|iram|ia|iam)"
 _INTERVENTION = re.compile(
-    r"\b(?:ajust\w*|apert\w*|remov\w*|instal\w*|substitu\w*|"
-    # "abrir" usa radical estreito, nao abr\w*: a versao ampla casaria
-    # tambem substantivos sem relacao, como "abraçadeira" (normalizado
-    # "abracadeira"), que aparece no vocabulario de correias/polias.
-    # "trocar" tem o mesmo desvio ortografico de "corrigir": a forma
-    # imperativo/subjuntivo troca c por qu antes de e ("troque", "troquem").
-    r"mex(?:er|a|am|endo|eu|e|em|o|ia|iam)\b|"
-    r"abr(?:ir|a|am|indo|iu)\b|desmont\w*|corrij\w*|corrig\w*|troc\w*|troqu\w*)\b"
+    rf"\b(?:"
+    rf"ajust{_AR_FORMS}|(?:re)?apert{_AR_FORMS}|"
+    rf"instal{_AR_FORMS}|desmont{_AR_FORMS}|"
+    rf"alinh{_AR_FORMS}|lubrific{_AR_FORMS}|repar{_AR_FORMS}|"
+    rf"remov{_ER_FORMS}|mex{_ER_FORMS}|abr{_IR_FORMS}|"
+    rf"substitu(?:ir|indo|iu|o|a|am|i|em|imos|iram|ia|iam)|"
+    rf"corrig(?:ir|indo|iu|o|e|em|imos|iram|ia|iam)|corrij(?:a|am|o)|"
+    rf"troc(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|troqu(?:e|em)"
+    rf")\b"
+)
+_NOMINAL_INTERVENTION = re.compile(
+    r"\b(?:de|do|da|dos|das|sobre)\s+(?:ajuste|aperto|reparo)\b|"
+    r"\b(?:ajustes|apertos|reparos)\b"
 )
 _RUNNING = re.compile(
     r"\b(?:maquina ligada|equipamento ligado|motor ligado|sem parar|operando|"
@@ -70,9 +83,14 @@ _SAFETY_EVIDENCE = re.compile(
 )
 
 
+def _has_intervention(normalized: str) -> bool:
+    without_nominal_uses = _NOMINAL_INTERVENTION.sub("", normalized)
+    return _INTERVENTION.search(without_nominal_uses) is not None
+
+
 def assess_question_safety(question: str) -> SafetyDecision:
     normalized = normalize_text(question)
-    if not _INTERVENTION.search(normalized):
+    if not _has_intervention(normalized):
         return SafetyDecision(SafetyOutcome.ALLOW)
     if _RUNNING.search(normalized):
         return SafetyDecision(
@@ -87,7 +105,7 @@ def safety_evidence_limitation(
     bundle: RetrievalBundle,
 ) -> str | None:
     normalized = normalize_text(question)
-    if not _INTERVENTION.search(normalized):
+    if not _has_intervention(normalized):
         return None
     evidence_text = normalize_text(
         " ".join(item.chunk.text for item in bundle.items)

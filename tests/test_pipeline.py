@@ -105,6 +105,9 @@ def _event():
 def test_falha_documentada_gera_diagnostico():
     rep = _pipeline(_df("correia", "falha")).diagnose(_event())
     assert rep.status == "diagnostico"
+    assert rep.message.startswith("Antes de qualquer intervenção")
+    assert "EPIs" in rep.message
+    assert "desligue completamente" in rep.message
     assert rep.total_ocorrencias == 20
     assert rep.sources == ["Doc4.pdf"]
     assert "correia" in rep.family_votes

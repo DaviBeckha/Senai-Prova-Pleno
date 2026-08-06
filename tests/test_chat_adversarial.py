@@ -203,13 +203,14 @@ def test_pergunta_de_historico_retorna_numeros_do_occurrence_stats():
 # Seguranca: intervencao com a maquina em funcionamento
 # ---------------------------------------------------------------------------
 
-# Os 10 verbos reconhecidos por _INTERVENTION (app/guardrails/safety.py), na
+# Os 14 verbos reconhecidos por _INTERVENTION (app/guardrails/safety.py), na
 # mesma ordem em que aparecem na regex. Cada um precisa orientar quando a
 # pergunta tambem cita a maquina em funcionamento — sem isso a cobertura do
 # guardrail fica dependente de qual verbo o operador escolheu escrever.
 _VERBOS_DE_INTERVENCAO = (
     "ajustar", "apertar", "remover", "instalar",
     "substituir", "mexer", "abrir", "desmontar", "corrigir", "trocar",
+    "alinhar", "lubrificar", "reapertar", "reparar",
 )
 
 
@@ -228,7 +229,7 @@ def _assert_live_safety_guidance(report):
 def test_intervencao_com_motor_ligado_e_orientada_para_cada_verbo(verbo):
     # Fixa o marcador ("motor ligado") e varia o verbo: prova que a orientacao
     # nao depende de qual verbo de intervencao fisica o operador usou —
-    # todos os 10 reconhecidos por _INTERVENTION disparam a mesma orientacao
+    # todos os 14 reconhecidos por _INTERVENTION disparam a mesma orientacao
     # antes de qualquer busca ou geracao.
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
@@ -338,6 +339,25 @@ def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
     assert "Antes de qualquer intervenção" not in rep.message
+
+
+@pytest.mark.parametrize(
+    "pergunta",
+    (
+        "Existe documento de ajuste da correia para motor ligado?",
+        "Quantos ajustes ocorreram com o motor ligado no histórico?",
+    ),
+)
+def test_consulta_informativa_nao_e_substituida_por_orientacao_de_risco(pergunta):
+    pipeline = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": CORREIA_CHUNK},
+    )
+
+    rep = pipeline.answer_question(pergunta)
+
+    assert "Não realize a intervenção" not in rep.message
 
 
 # ---------------------------------------------------------------------------

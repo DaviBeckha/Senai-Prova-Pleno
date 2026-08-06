@@ -17,6 +17,7 @@ from app.data.labels import display_label
 from app.guardrails.policy import decide
 from app.guardrails.request_policy import RequestOutcome, inspect_request
 from app.guardrails.safety import (
+    SAFETY_ADVISORY,
     SafetyOutcome,
     assess_question_safety,
     safety_evidence_limitation,
@@ -208,7 +209,7 @@ class PrescriptivePipeline:
             else outcome.answer_status
         )
         return _report(
-            diagnosis_status, outcome.text,
+            diagnosis_status, f"{SAFETY_ADVISORY}\n\n{outcome.text}",
             sources=sorted({c.source for c in chunks}),
             renderer=outcome.renderer,
             degraded=outcome.degraded,

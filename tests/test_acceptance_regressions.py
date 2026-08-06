@@ -371,6 +371,36 @@ def test_controles_deterministicos_nao_chamam_redator():
     assert "2 ocorrências" in history.message
 
 
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Posso alinhar a polia com o motor ligado?",
+        "Posso lubrificar o rolamento com o motor ligado?",
+        "Posso reapertar os parafusos com o motor ligado?",
+        "Posso reparar o conjunto com o motor ligado?",
+        "Nós mexemos na correia com o motor ligado.",
+        "Eles mexeram na correia com o motor ligado.",
+    ),
+)
+def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):
+    df = _dataframe("correia", "correia")
+    engine = SimilarityEngine()
+    engine.fit(df)
+    pipeline = PrescriptivePipeline(
+        engine,
+        df,
+        _Registry(),
+        _RaisingIndex(),
+        _RaisingRouter(),
+    )
+
+    report = pipeline.answer_question(question)
+
+    assert report.status == "answered"
+    assert report.sources == ()
+    assert "Não realize a intervenção" in report.message
+
+
 _TIE_RESULT = SimilarityResult(
     dominant_family="correia",
     dominant_kind="falha",
