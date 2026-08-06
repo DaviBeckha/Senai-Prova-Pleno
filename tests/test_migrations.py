@@ -147,3 +147,105 @@ def test_migration_remove_diagnoses_orfaos_legados_antes_de_criar_fk(tmp_path, m
         assert rows == [(1, "msg valido")]
     finally:
         get_settings.cache_clear()
+
+
+def test_alembic_upgrade_head_cria_unique_constraint_documents_family_title(tmp_path, monkeypatch):
+    db_path = tmp_path / "migra_uq.db"
+    url = _sqlite_url(db_path)
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        command.upgrade(_alembic_config(url), "head")
+
+        engine = create_engine(url, future=True)
+        try:
+            uqs = inspect(engine).get_unique_constraints("documents")
+        finally:
+            engine.dispose()
+
+        assert any(
+            set(uq["column_names"]) == {"family", "title"} for uq in uqs
+        )
+    finally:
+        get_settings.cache_clear()
+
+
+def test_documents_com_family_title_exatos_duplicados_falha_apos_migration(tmp_path, monkeypatch):
+    db_path = tmp_path / "migra_uq_insert.db"
+    url = _sqlite_url(db_path)
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        command.upgrade(_alembic_config(url), "head")
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                "INSERT INTO documents (family, title, source_path, created_at) "
+                "VALUES ('correia', 'Doc Correia', 'x.pdf', '2026-01-01T00:00:00')"
+            )
+            conn.commit()
+            try:
+                conn.execute(
+                    "INSERT INTO documents (family, title, source_path, created_at) "
+                    "VALUES ('correia', 'Doc Correia', 'y.pdf', '2026-01-02T00:00:00')"
+                )
+                conn.commit()
+                assert False, "esperava falha de unique constraint"
+            except sqlite3.IntegrityError:
+                pass
+        finally:
+            conn.close()
+    finally:
+        get_settings.cache_clear()
+
+
+def test_migration_dedup_documents_legados_mantem_linha_mais_antiga(tmp_path, monkeypatch):
+    # Antes da constraint existir, o banco pode ter duplicatas exatas
+    # (family+title identicos) da race select-then-insert do register()
+    # antigo. A migration precisa deduplicar ANTES de criar a constraint,
+    # mantendo a linha mais antiga (menor id / primeira inserida).
+    db_path = tmp_path / "migra_uq_dedup.db"
+    url = _sqlite_url(db_path)
+    monkeypatch.setenv("DATABASE_URL", url)
+    get_settings.cache_clear()
+    try:
+        cfg = _alembic_config(url)
+        command.upgrade(cfg, "0003")
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute(
+                "INSERT INTO documents (id, family, title, source_path, created_at) "
+                "VALUES (1, 'correia', 'Doc Correia', 'antigo.pdf', '2026-01-01T00:00:00')"
+            )
+            conn.execute(
+                "INSERT INTO documents (id, family, title, source_path, created_at) "
+                "VALUES (2, 'correia', 'Doc Correia', 'duplicado.pdf', '2026-01-02T00:00:00')"
+            )
+            # Titulo com case diferente NAO e duplicata exata (constraint e
+            # case-sensitive) -- deve sobreviver a dedup da migration.
+            conn.execute(
+                "INSERT INTO documents (id, family, title, source_path, created_at) "
+                "VALUES (3, 'correia', 'doc correia', 'case-diferente.pdf', '2026-01-03T00:00:00')"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        command.upgrade(cfg, "head")
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            rows = conn.execute(
+                "SELECT id, title, source_path FROM documents ORDER BY id"
+            ).fetchall()
+        finally:
+            conn.close()
+
+        assert rows == [
+            (1, "Doc Correia", "antigo.pdf"),
+            (3, "doc correia", "case-diferente.pdf"),
+        ]
+    finally:
+        get_settings.cache_clear()

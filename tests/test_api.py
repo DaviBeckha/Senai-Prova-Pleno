@@ -645,6 +645,58 @@ def test_documentos_dedup_titulo_normalizado_case_insensitive(tmp_path, monkeypa
         get_settings.cache_clear()
 
 
+def test_documentos_race_de_unique_constraint_retorna_409(tmp_path, monkeypatch):
+    # Segunda linha de defesa: o dedup do register() (select-then-insert) tem
+    # uma janela de race entre dois requests concorrentes que leem
+    # has_document()==False antes de qualquer um commitar. Simula esse
+    # cenario de forma deterministica: has_document() sempre reporta "nao
+    # existe" (bypassa o pre-check da rota) e register() perde seu proprio
+    # check interno (bypassa o pre-check dele tambem) — a segunda gravacao
+    # exata esbarra na UniqueConstraint real do banco (IntegrityError), que a
+    # rota precisa traduzir para o mesmo 409 dos outros caminhos de dedup.
+    from app.data.models import Document
+    from app.data.registry import DocumentRegistry
+
+    try:
+        client, registry, _ = _client_com_registry_e_index(tmp_path, monkeypatch)
+
+        monkeypatch.setattr(
+            DocumentRegistry, "has_document",
+            lambda self, family, title=None: False,
+        )
+
+        def _register_sem_dedup_interno(self, family, title, source_path):
+            with self._factory() as session:
+                session.add(Document(family=family, title=title.strip(),
+                                     source_path=source_path))
+                session.commit()
+
+        monkeypatch.setattr(DocumentRegistry, "register", _register_sem_dedup_interno)
+
+        content = b"1. Objetivo\nAjustar tensao da correia frouxa.\n"
+
+        r1 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Race"},
+        )
+        assert r1.status_code == 200
+        assert len(list(tmp_path.iterdir())) == 1
+
+        r2 = client.post(
+            "/documentos",
+            files={"file": ("Doc Teste2.md", content, "text/markdown")},
+            data={"family": "correia", "title": "Doc Race"},
+        )
+        assert r2.status_code == 409
+        assert "documento já cadastrado" in r2.json()["detail"]
+
+        # Arquivo do segundo upload nao deve sobrar em disco.
+        assert len(list(tmp_path.iterdir())) == 1
+    finally:
+        get_settings.cache_clear()
+
+
 def test_documentos_arquivo_vazio_retorna_422_e_nao_registra(tmp_path, monkeypatch):
     # Antes desta correcao: .md vazio ingeria 0 chunks e AINDA ASSIM
     # registrava a familia como "documentada" (200 {"chunks": 0}) — todo

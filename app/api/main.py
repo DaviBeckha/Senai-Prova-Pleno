@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from sqlalchemy.exc import IntegrityError
 
 from app.api.schemas import ChatIn, ChatOut, DiagnosisOut, EventIn
 from app.api.state import AppState
@@ -163,6 +164,14 @@ def create_app(skip_bootstrap: bool = False) -> FastAPI:
         try:
             state.registry.register(family, title, str(dest))
         except ValueError as exc:
+            dest.unlink(missing_ok=True)
+            raise HTTPException(409, "documento já cadastrado para esta família com este título") from exc
+        except IntegrityError as exc:
+            # Race verdadeira: dois requests concorrentes passaram pelo
+            # pre-check de dedup (has_document) antes de qualquer um
+            # commitar. A UniqueConstraint do banco (family, title) pega o
+            # que o pre-check em memória não pegou — mesmo 409 dos outros
+            # caminhos de dedup.
             dest.unlink(missing_ok=True)
             raise HTTPException(409, "documento já cadastrado para esta família com este título") from exc
         except Exception:

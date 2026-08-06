@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -36,6 +36,17 @@ class Diagnosis(Base):
 
 class Document(Base):
     __tablename__ = "documents"
+    # Segunda linha de defesa contra a race select-then-insert de
+    # DocumentRegistry.register(): o pre-check de dedup (has_document /
+    # register) e case-insensitive (func.lower(title)), mas esta constraint
+    # de banco compara a grafia exata (case-SENSITIVE) — ela nao substitui o
+    # pre-check da aplicacao, so fecha a janela entre dois requests
+    # concorrentes que leem "nao existe" ao mesmo tempo e tentam gravar o
+    # MESMO family+title (grafia identica). Duplicatas que diferem apenas na
+    # capitalizacao continuam dependendo exclusivamente do pre-check.
+    __table_args__ = (
+        UniqueConstraint("family", "title", name="uq_documents_family_title"),
+    )
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     family: Mapped[str] = mapped_column(String(64), index=True)
     title: Mapped[str] = mapped_column(String(255))
