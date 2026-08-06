@@ -27,6 +27,8 @@ from app.api.state import AppState
 from app.chat.types import ChatReport
 from app.data.loader import FEATURE_COLUMNS
 from app.pipeline import DiagnosisReport
+from app.rag.chunking import Chunk
+from app.rag.search import EvidenceItem
 
 _DASHBOARD = Path(__file__).resolve().parent.parent / "dashboard"
 # APPEND, nunca insert(0) — ver a nota em tests/test_dashboard_paginas.py:
@@ -35,6 +37,20 @@ if str(_DASHBOARD) not in sys.path:
     sys.path.append(str(_DASHBOARD))
 
 AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
+
+
+def _evidence_correia() -> EvidenceItem:
+    return EvidenceItem(
+        evidence_id="correia:E1",
+        family="correia",
+        chunk=Chunk(
+            doc_family="correia",
+            source="Doc4.pdf",
+            section="9.1 Correia Frouxa",
+            text="Ajustar a tensão da correia.",
+        ),
+        score=0.9,
+    )
 
 
 class PipelineComEmpate:
@@ -61,6 +77,7 @@ class PipelineComEmpate:
             per_day={"2026-06-01": 1500, "2026-06-02": 1499},
             validation_errors=["passo 1: ação possui suporte lexical de 0.40, "
                                "abaixo de 0.60"],
+            evidence=(_evidence_correia(),),
         )
 
     def answer_question(self, pergunta, mode=None):
@@ -70,6 +87,7 @@ class PipelineComEmpate:
             families=("correia",), sources=("Doc4.pdf",), renderer="ollama",
             degraded=False,
             limitations=("A evidência não cobre o torque exato de reaperto.",),
+            evidence=(_evidence_correia(),),
         )
 
 
@@ -191,6 +209,7 @@ def test_cliente_diagnostica_pela_api_real():
     assert resposta["erros_de_validacao"]
     assert resposta["ocorrencias"]["primeira"]
     assert resposta["vizinhos_consultados"] == 50
+    assert resposta["evidencias"][0]["id"] == "correia:E1"
 
 
 def test_cliente_traduz_erro_da_api_em_excecao_de_dominio():
@@ -241,6 +260,10 @@ def test_chat_renderiza_resposta_da_api_real():
     assert "Respondido com fonte" in texto
     assert "Doc4.pdf" in texto
     assert "torque exato" in texto
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
 
 
 def test_documentos_lista_da_api_real_sem_expor_caminho():

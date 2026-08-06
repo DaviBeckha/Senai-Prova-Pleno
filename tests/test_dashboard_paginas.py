@@ -96,6 +96,13 @@ DIAGNOSTICO_EMPATE = {
     "degradado": True,
     "erros_de_validacao": ["passo 1: ação possui suporte lexical de 0.40, "
                            "abaixo de 0.60"],
+    "evidencias": [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": "Ajustar a tensão da correia.",
+    }],
     "votos_por_familia": {"correia": 9, "rolamento_outer": 9,
                           "rolamento_ball": 9, "rolamento_inner": 7,
                           "normal": 2},
@@ -111,6 +118,13 @@ CHAT_RESPONDIDO = {
     "degradado": False,
     "limitacoes": ["A evidência não cobre o torque exato de reaperto."],
     "erros_de_validacao": [],
+    "evidencias": [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": "Ajustar a tensão da correia.",
+    }],
 }
 
 
@@ -340,8 +354,23 @@ def test_pagina_diagnostico_mostra_fontes_e_redator():
     prova.button[0].click().run()
 
     texto = _textos(prova)
-    assert "Doc4.pdf" in texto
+    assert "Doc4.pdf" not in texto
+    assert "1 evidência documental" in texto
     assert "determinística" in texto
+
+
+def test_pagina_diagnostico_coloca_evidencia_bruta_em_expansor():
+    prova = _rodar("diagnostico.py")
+    prova.button[0].click().run()
+
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
+    assert any(
+        "Ajustar a tensão da correia." in bloco.value
+        for bloco in prova.code
+    )
 
 
 def test_pagina_diagnostico_compara_rotulo_real_com_o_diagnostico():
@@ -408,6 +437,86 @@ def test_pagina_chat_mostra_limitacoes_declaradas():
     prova.chat_input[0].set_value("como corrigir correia?").run()
 
     assert "torque exato" in _textos(prova)
+
+
+def test_pagina_chat_coloca_evidencia_bruta_em_expansor():
+    prova = _rodar("chat.py")
+    prova.chat_input[0].set_value("como corrigir correia?").run()
+
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
+    assert any("Doc4.pdf" in texto.value for texto in prova.text)
+    assert any(
+        "Ajustar a tensão da correia." in bloco.value
+        for bloco in prova.code
+    )
+
+
+def test_pagina_chat_ignora_evidencias_malformadas_sem_quebrar(monkeypatch):
+    import api
+
+    resposta = {
+        **CHAT_RESPONDIDO,
+        "evidencias": [
+            None,
+            "invalida",
+            {},
+            {"id": "sem outros campos"},
+            CHAT_RESPONDIDO["evidencias"][0],
+        ],
+    }
+    monkeypatch.setattr(api, "perguntar", lambda pergunta, modo: resposta)
+
+    prova = _rodar("chat.py")
+    prova.chat_input[0].set_value("como corrigir correia?").run()
+
+    assert not prova.exception, [str(erro) for erro in prova.exception]
+    assert any(
+        expander.label == "Ver evidências e fontes (1)"
+        for expander in prova.expander
+    )
+
+
+def test_pagina_diagnostico_ignora_payload_de_evidencias_invalido(monkeypatch):
+    import api
+
+    resposta = {**DIAGNOSTICO_EMPATE, "evidencias": None}
+    monkeypatch.setattr(api, "diagnosticar", lambda features, modo: resposta)
+
+    prova = _rodar("diagnostico.py")
+    prova.button[0].click().run()
+
+    assert not prova.exception, [str(erro) for erro in prova.exception]
+    assert not [
+        expander
+        for expander in prova.expander
+        if expander.label.startswith("Ver evidências e fontes")
+    ]
+    assert "expansor" not in "\n".join(
+        warning.value.lower() for warning in prova.warning
+    )
+
+
+def test_pagina_chat_esconde_fonte_tecnica_do_fallback(monkeypatch):
+    import api
+
+    resposta = {
+        **CHAT_RESPONDIDO,
+        "resposta": "### Orientação encontrada para Correia",
+        "redator": "template",
+        "degradado": True,
+        "erros_de_validacao": ["geração rejeitada"],
+    }
+    monkeypatch.setattr(api, "perguntar", lambda pergunta, modo: resposta)
+
+    prova = _rodar("chat.py")
+    prova.chat_input[0].set_value("como corrigir correia?").run()
+
+    assert "Doc4.pdf" not in _textos(prova)
+    assert "1 evidência documental" in _textos(prova)
+    assert any("Doc4.pdf" in texto.value for texto in prova.text)
 
 
 # --- Documentos ------------------------------------------------------------

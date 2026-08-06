@@ -16,7 +16,7 @@ sao identidade de dado, nao texto de interface.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, create_model
+from pydantic import BaseModel, ConfigDict, Field, create_model
 
 from app.data.labels import display_label
 from app.data.loader import FEATURE_COLUMNS
@@ -77,6 +77,26 @@ class JanelaOcorrencias(BaseModel):
     por_dia: dict[str, int]
 
 
+class EvidenciaOut(BaseModel):
+    """Trecho recuperado que sustenta ou contextualiza uma resposta."""
+
+    id: str
+    familia: str
+    fonte: str
+    secao: str
+    trecho: str
+
+    @classmethod
+    def de_item(cls, item) -> "EvidenciaOut":
+        return cls(
+            id=item.evidence_id,
+            familia=item.family,
+            fonte=item.chunk.source,
+            secao=item.chunk.section,
+            trecho=item.chunk.text,
+        )
+
+
 class DiagnosticoOut(BaseModel):
     status: str
     familia: str | None
@@ -104,6 +124,7 @@ class DiagnosticoOut(BaseModel):
     familias_candidatas: list[str]
     participacao_maior_voto: float
     margem_votos: int
+    evidencias: list[EvidenciaOut] = Field(default_factory=list)
 
     @classmethod
     def de_relatorio(cls, report) -> "DiagnosticoOut":
@@ -132,6 +153,10 @@ class DiagnosticoOut(BaseModel):
             familias_candidatas=list(report.candidate_families),
             participacao_maior_voto=report.top_vote_share,
             margem_votos=report.vote_margin,
+            evidencias=[
+                EvidenciaOut.de_item(item)
+                for item in getattr(report, "evidence", ())
+            ],
         )
 
 
@@ -149,6 +174,7 @@ class ChatOut(BaseModel):
     degradado: bool
     limitacoes: list[str]
     erros_de_validacao: list[str]
+    evidencias: list[EvidenciaOut] = Field(default_factory=list)
 
     @classmethod
     def de_relatorio(cls, report) -> "ChatOut":
@@ -161,6 +187,10 @@ class ChatOut(BaseModel):
             degradado=report.degraded,
             limitacoes=list(report.limitations),
             erros_de_validacao=list(report.validation_errors),
+            evidencias=[
+                EvidenciaOut.de_item(item)
+                for item in getattr(report, "evidence", ())
+            ],
         )
 
     # Dois exemplos no Swagger bastam para mostrar, sem provocar os dois casos
@@ -186,6 +216,7 @@ class ChatOut(BaseModel):
                         "A evidência não cobre o torque exato de reaperto."
                     ],
                     "erros_de_validacao": [],
+                    "evidencias": [],
                 },
                 {
                     "status": "sem_documento",
@@ -200,6 +231,7 @@ class ChatOut(BaseModel):
                     "degradado": False,
                     "limitacoes": [],
                     "erros_de_validacao": [],
+                    "evidencias": [],
                 },
             ]
         }

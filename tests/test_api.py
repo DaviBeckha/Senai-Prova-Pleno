@@ -13,6 +13,22 @@ from app.core.config import get_settings
 from app.data.loader import FEATURE_COLUMNS
 from app.data.models import Base, Diagnosis, Event
 from app.pipeline import DiagnosisReport
+from app.rag.chunking import Chunk
+from app.rag.search import EvidenceItem
+
+
+def _evidence_correia() -> EvidenceItem:
+    return EvidenceItem(
+        evidence_id="correia:E1",
+        family="correia",
+        chunk=Chunk(
+            doc_family="correia",
+            source="Doc4.pdf",
+            section="9.1 Correia Frouxa",
+            text="Ajustar a tensão da correia.",
+        ),
+        score=0.9,
+    )
 
 
 class FakePipeline:
@@ -23,28 +39,32 @@ class FakePipeline:
         self.last_mode = mode
         # Construcao nomeada: o relatorio tem 14 campos e um novo no meio da
         # lista deslocaria os posicionais seguintes sem erro de tipo.
-        return DiagnosisReport(
+        report = DiagnosisReport(
             status="diagnostico", family="correia", message="ajustar tensao",
             total_ocorrencias=10, freq_per_day=1.5, sources=["Doc4.pdf"],
             renderer="template", degraded=False, family_votes={"correia": 10},
             neighbor_count=10, first_seen="2026-06-01T00:00:00+00:00",
             last_seen="2026-06-08T00:00:00+00:00", per_day={"2026-06-01": 10},
             validation_errors=["passo 1: ação possui suporte lexical de 0.50"],
+            evidence=(_evidence_correia(),),
         )
+        return report
 
     def answer_question(self, pergunta, mode=None):
         self.last_mode = mode
         # answer_question() do pipeline real devolve ChatReport (nao
         # DiagnosisReport) — sao contratos diferentes; usar o tipo certo aqui
         # evita que o fake mascare os campos novos do endpoint /chat.
-        return ChatReport(
+        report = ChatReport(
             status="answered",
             message="ajustar tensao",
             families=("correia",),
             sources=("Doc4.pdf",),
             renderer="template",
             degraded=False,
+            evidence=(_evidence_correia(),),
         )
+        return report
 
 
 def _client():
@@ -90,6 +110,13 @@ def test_eventos_retorna_diagnostico():
     assert data["fontes"] == ["Doc4.pdf"]
     assert data["votos_por_familia"] == {"correia": 10}
     assert data["vizinhos_consultados"] == 10
+    assert data["evidencias"] == [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": "Ajustar a tensão da correia.",
+    }]
 
 
 def test_eventos_contrato_em_portugues_sem_campos_em_ingles():
@@ -104,6 +131,7 @@ def test_eventos_contrato_em_portugues_sem_campos_em_ingles():
         "frequencia_por_dia", "ocorrencias", "fontes", "redator", "degradado",
         "erros_de_validacao", "votos_por_familia", "vizinhos_consultados",
         "familias_candidatas", "participacao_maior_voto", "margem_votos",
+        "evidencias",
     }
 
 
@@ -218,7 +246,7 @@ def test_chat_expoe_contrato_completo():
     # entre "resposta fundamentada" e os outros desfechos (RF4 anti-alucinacao).
     class FakeChatCompleto(FakePipeline):
         def answer_question(self, pergunta, mode=None):
-            return ChatReport(
+            report = ChatReport(
                 status="answered",
                 message="- Ajustar tensão [Doc4.pdf — seção 9.1; evidência correia:E1]",
                 families=("correia",),
@@ -227,7 +255,9 @@ def test_chat_expoe_contrato_completo():
                 degraded=False,
                 limitations=("a evidência não cobre torque exato",),
                 validation_errors=(),
+                evidence=(_evidence_correia(),),
             )
+            return report
     app = create_app(skip_bootstrap=True)
     state = AppState(pipeline=FakeChatCompleto(), registry=None, index=None, df=None)
     app.dependency_overrides[get_state] = lambda: state
@@ -244,11 +274,26 @@ def test_chat_expoe_contrato_completo():
     assert data["degradado"] is False
     assert data["limitacoes"] == ["a evidência não cobre torque exato"]
     assert data["erros_de_validacao"] == []
+    assert data["evidencias"] == [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": "Ajustar a tensão da correia.",
+    }]
     # Nenhum campo em ingles sobrando no contrato do /chat.
     assert set(data) == {
         "status", "resposta", "familias", "fontes", "redator", "degradado",
-        "limitacoes", "erros_de_validacao",
+        "limitacoes", "erros_de_validacao", "evidencias",
     }
+
+
+def test_chat_sem_recuperacao_expoe_lista_de_evidencias_vazia():
+    from app.api.schemas import ChatOut
+
+    body = ChatOut.de_relatorio(ChatReport("out_of_scope", "fora de escopo"))
+
+    assert body.evidencias == []
 
 
 def test_chat_expoe_validation_errors_quando_degradado():

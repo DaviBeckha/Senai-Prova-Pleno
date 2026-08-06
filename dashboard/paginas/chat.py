@@ -10,6 +10,7 @@ distingue uma resposta fundamentada de uma contencao.
 import streamlit as st
 
 import api
+import evidencias
 import estado
 import tempo
 import vocabulario
@@ -38,6 +39,9 @@ with col_limpar:
 
 def _mostrar_resposta(resposta: dict) -> None:
     status = resposta["status"]
+    itens_evidencia = evidencias.normalizar_evidencias(
+        resposta.get("evidencias", []),
+    )
     st.markdown(resposta["resposta"])
 
     st.caption(f"**{vocabulario.titulo_chat(status)}** — "
@@ -50,9 +54,25 @@ def _mostrar_resposta(resposta: dict) -> None:
         st.caption(f"Famílias reconhecidas: {rotulos}")
 
     if resposta["fontes"]:
-        st.caption("Fontes: " + ", ".join(resposta["fontes"]))
+        if itens_evidencia:
+            total = len(itens_evidencia)
+            resumo = (
+                "1 evidência documental"
+                if total == 1
+                else f"{total} evidências documentais"
+            )
+            st.caption(
+                f"{resumo}; consulte os detalhes abaixo."
+            )
+        else:
+            st.caption("Fontes: " + ", ".join(resposta["fontes"]))
 
     st.caption(f"Redator: {vocabulario.nome_redator(resposta['redator'])}")
+
+    evidencias.mostrar_evidencias(
+        itens_evidencia,
+        familias.rotulo,
+    )
 
     if resposta["degradado"]:
         # Duas causas distintas chegam com degradado=True, e a diferenca importa:
@@ -62,12 +82,24 @@ def _mostrar_resposta(resposta: dict) -> None:
             st.warning(
                 "**Geração rejeitada pela validação de fundamentação.** O modelo "
                 "respondeu, mas o texto não teve suporte suficiente nos trechos "
-                "citados; o que aparece acima é extração determinística.",
+                "citados. A orientação acima foi organizada deterministicamente "
+                "a partir do documento"
+                + (
+                    "; os trechos originais estão no expansor."
+                    if itens_evidencia
+                    else "."
+                ),
             )
         else:
             st.warning(
                 "**Modelo indisponível.** A resposta acima vem de extração "
-                "determinística dos trechos recuperados, não de geração.",
+                "determinística organizada dos trechos recuperados, não de "
+                "geração"
+                + (
+                    ". Os originais estão disponíveis no expansor."
+                    if itens_evidencia
+                    else "."
+                ),
             )
 
     if resposta["erros_de_validacao"]:

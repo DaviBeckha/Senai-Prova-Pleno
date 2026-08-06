@@ -19,6 +19,7 @@ import streamlit as st
 
 import api
 import confianca as conf
+import evidencias
 import estado
 import formato
 import graficos
@@ -152,12 +153,20 @@ if amostra:
 
 st.subheader("Recomendação")
 
+itens_evidencia = evidencias.normalizar_evidencias(
+    resposta.get("evidencias", []),
+)
+
 if resposta["degradado"]:
     st.warning(
         "**Texto não produzido pelo modelo.** A geração foi rejeitada pela "
-        "validação de fundamentação e o sistema caiu para extração "
-        "determinística dos trechos recuperados. Trate como evidência bruta, "
-        "não como orientação redigida.",
+        "validação de fundamentação. A orientação foi organizada "
+        "deterministicamente a partir dos trechos recuperados"
+        + (
+            "; os originais continuam disponíveis no expansor de evidências."
+            if itens_evidencia
+            else "."
+        ),
     )
 
 mensagem = resposta["mensagem"]
@@ -171,12 +180,28 @@ if len(mensagem) > 1500:
 else:
     st.markdown(mensagem)
 
+evidencias.mostrar_evidencias(
+    itens_evidencia,
+    familias.rotulo,
+)
+
 col_fontes, col_redator = st.columns(2)
 with col_fontes:
     if resposta["fontes"]:
         st.markdown("**Fontes**")
-        for fonte in resposta["fontes"]:
-            st.markdown(f"— {fonte}")
+        if itens_evidencia:
+            total = len(itens_evidencia)
+            resumo = (
+                "1 evidência documental"
+                if total == 1
+                else f"{total} evidências documentais"
+            )
+            st.caption(
+                f"{resumo}; detalhes no expansor."
+            )
+        else:
+            for fonte in resposta["fontes"]:
+                st.markdown(f"— {fonte}")
     else:
         st.markdown("**Fontes**")
         st.caption("Nenhuma — o sistema não gerou recomendação fundamentada.")

@@ -119,8 +119,19 @@ def test_eventos_sobrevive_com_ollama_fora_do_ar():
     # degradacao explicitamente — nao e preciso inferir pelo texto.
     assert data["degradado"] is True
     assert data["redator"] == "template"
-    # Alem do marcador, o efeito observavel: instrucoes do template
-    # deterministico (evidencia crua), nao uma sintese de LLM.
-    assert "Doc4.pdf" in data["mensagem"]
+    # Alem do marcador, o efeito observavel: orientacao organizada pelo
+    # template deterministico, nao uma sintese de LLM. A fonte fica no campo
+    # auditavel em vez de poluir o texto principal.
+    assert "Orientação encontrada para Correia" in data["mensagem"]
+    assert "Doc4.pdf" not in data["mensagem"]
     assert "Afrouxar os parafusos do motor" in data["mensagem"]
     assert data["fontes"] == ["Doc4.pdf"]
+    assert data["evidencias"] == [{
+        "id": "correia:E1",
+        "familia": "correia",
+        "fonte": "Doc4.pdf",
+        "secao": "9.1 Correia Frouxa",
+        "trecho": (
+            "1. Afrouxar os parafusos do motor. 2. Ajustar a tensao."
+        ),
+    }]
