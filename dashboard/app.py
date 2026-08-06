@@ -15,6 +15,7 @@ import plotly.express as px
 import streamlit as st
 
 from app.data.labels import normalize_label
+from dashboard.client import request_json
 from scripts.simulator import build_payload
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
@@ -96,16 +97,34 @@ with aba_chat:
             payload["modo"] = modo
 
             try:
-                r = httpx.post(f"{API_URL}/eventos", json=payload, timeout=REQUEST_TIMEOUT).json()
+                with st.spinner("Processando e validando o diagnóstico..."):
+                    timed_response = request_json(
+                        httpx.post,
+                        f"{API_URL}/eventos",
+                        payload,
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                r = timed_response.payload
                 # Duas grandezas distintas: neighbor_count é quantos vizinhos o
                 # kNN desta consulta de fato votou (top-3 no caption abaixo);
                 # total_ocorrencias/freq_per_day é o histórico completo da
                 # família vencedora (occurrence_stats), não os vizinhos consultados.
-                st.info(f"Status: {r['status']} | Família: {r['family']} — "
+                if r["status"] == "diagnostico_inconclusivo":
+                    candidates = ", ".join(r.get("candidate_families", []))
+                    st.warning(
+                        f"Diagnóstico inconclusivo entre: {candidates}. "
+                        f"Maior voto: {r.get('top_vote_share', 0):.0%}; "
+                        f"margem: {r.get('vote_margin', 0)}."
+                    )
+                else:
+                    st.info(
+                        f"Status: {r['status']} | Família: {r['family']} — "
                         f"voto de {r['neighbor_count']} vizinhos mais próximos. "
                         f"Histórico da família: {r['total_ocorrencias']} ocorrências "
-                        f"({r['freq_per_day']}/dia).")
+                        f"({r['freq_per_day']}/dia)."
+                    )
                 st.markdown(r["message"])
+                st.caption(f"Tempo total: {timed_response.elapsed_seconds:.2f}s")
 
                 # Comparação honesta: rótulo real vs diagnóstico
                 st.divider()
@@ -116,7 +135,10 @@ with aba_chat:
                     st.markdown(f"_Família:_ `{row['family']}`")
                 with col_diag:
                     st.markdown(f"**Diagnóstico:** {r['status']}")
-                    st.markdown(f"_Família:_ `{r['family']}`")
+                    if r["family"] is None:
+                        st.markdown("_Família:_ não definida (resultado inconclusivo)")
+                    else:
+                        st.markdown(f"_Família:_ `{r['family']}`")
 
                 votos = r.get("family_votes", {})
                 if votos:
@@ -137,11 +159,17 @@ with aba_chat:
         with st.chat_message("user"):
             st.write(pergunta)
         try:
-            resp = httpx.post(f"{API_URL}/chat",
-                            json={"pergunta": pergunta, "modo": modo},
-                            timeout=REQUEST_TIMEOUT).json()
+            with st.spinner("Processando e validando a resposta..."):
+                timed_response = request_json(
+                    httpx.post,
+                    f"{API_URL}/chat",
+                    {"pergunta": pergunta, "modo": modo},
+                    timeout=REQUEST_TIMEOUT,
+                )
+            resp = timed_response.payload
             with st.chat_message("assistant"):
                 st.write(resp["resposta"])
+                st.caption(f"Tempo total: {timed_response.elapsed_seconds:.2f}s")
                 if resp["fontes"]:
                     st.caption("Fontes: " + ", ".join(resp["fontes"]))
                 redator = resp.get("renderer") or "determinístico"

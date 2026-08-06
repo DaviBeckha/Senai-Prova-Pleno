@@ -20,7 +20,13 @@ docker compose up --build
 
 # Alternativa com GPU NVIDIA (override opt-in; requer nvidia-container-toolkit)
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+
+# Confirmar, depois de uma geração, que PROCESSOR mostra 100% GPU
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec ollama ollama ps
 ```
+
+Ao alternar de CPU para GPU, use `docker compose down` sem `-v`. A opção `-v` apagaria o
+volume persistente do Ollama e exigiria baixar novamente o modelo.
 
 ```powershell
 # Primeiro uso: o volume do Ollama comeca vazio — puxar o modelo local
