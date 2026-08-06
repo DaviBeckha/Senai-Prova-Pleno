@@ -1,0 +1,31 @@
+# Dependencias para rodar a suite de testes no CI (GitHub Actions).
+#
+# Subconjunto de requirements.txt SEM sentence-transformers/torch/faiss-cpu:
+# nenhum teste carrega o modelo de embeddings real (EmbeddingService.load()) —
+# todos usam um embedder fake determinístico — e app/rag/index.py cai para um
+# fallback em numpy puro quando o pacote faiss não está instalado. Excluir os
+# três evita ~2 GB de download só para rodar a suite. Validado localmente:
+# mesma suite (195 passed + 2 xfailed) roda igual com este subconjunto, ver
+# README ("Como rodar os testes").
+#
+# pytest entra aqui (em vez de referenciar requirements-dev.txt, que por sua
+# vez referencia requirements.txt completo) para o CI não reintroduzir os
+# pacotes pesados excluídos acima.
+pytest==8.3.4
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+pydantic==2.10.4
+pydantic-settings==2.7.0
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg[binary]==3.2.3
+pandas==2.3.3
+openpyxl==3.1.5
+scikit-learn==1.5.2
+pypdf>=5.1
+httpx==0.28.1
+openai==2.46.0
+streamlit==1.40.2
+plotly==5.24.1
+python-dotenv==1.0.1

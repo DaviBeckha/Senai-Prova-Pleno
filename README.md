@@ -1,5 +1,7 @@
 # Manutenção Prescritiva — SENAI SC
 
+[![CI](https://github.com/DaviBeckha/Senai-Prova-Pleno/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviBeckha/Senai-Prova-Pleno/actions/workflows/ci.yml)
+
 Projeto desenvolvido para o processo seletivo de Desenvolvedor Full Stack I.A. e Python
 (pleno) do SENAI SC. Autor: Davi Beckhauser.
 
@@ -245,11 +247,40 @@ devolve somente os trechos recuperados e marca `degraded: true`, registrando o m
 
 O redator não devolve mais prosa: devolve um JSON em que cada ação vem amarrada a uma
 evidência e à citação que a sustenta (`app/llm/contracts.py`). O `Router` valida antes de
-formatar (`app/llm/grounding.py`), conferindo quatro coisas por passo: o `evidence_id`
-existe, a família bate, a citação é substring literal do trecho, e a ação é lexicalmente
-sustentada pela citação sem introduzir números novos. **Um único passo reprovado invalida o
-rascunho inteiro** — meia resposta fundamentada e meia inventada continua sendo uma resposta
-inventada.
+formatar (`app/llm/grounding.py::validate_grounded_draft`), conferindo seis coisas por passo:
+
+1. o `evidence_id` declarado existe entre os trechos realmente recuperados;
+2. a família declarada no passo bate com a família da evidência resolvida;
+3. a citação (`quote`) é substring literal do trecho — comparação normalizada (sem acentos,
+   minúscula, espaços colapsados), mas literal, nunca parafraseada;
+4. todo número presente na ação está contido na citação (nenhum torque, folga ou medida
+   "nova" pode aparecer na ação sem estar no texto citado);
+5. o suporte lexical da ação na citação — fração de tokens significativos da ação que também
+   aparecem na citação — é de pelo menos 0,60;
+6. uma negação (`não`/`nunca`/`jamais`) presente em só um dos dois lados reprova o passo: o
+   suporte lexical sozinho não pega esse caso, porque "Não aplicar a tensão recomendada de 45
+   N" reaproveita quase todas as palavras de "Aplicar a tensão recomendada de 45 N" e ainda
+   assim inverte o que a citação diz.
+
+**Um único passo reprovado invalida o rascunho inteiro** — meia resposta fundamentada e meia
+inventada continua sendo uma resposta inventada. Nesse caso o `Router` degrada para o
+`TemplateRenderer` (extrativo, sem síntese) e a resposta de `/chat` sai com `degraded: true` e
+`validation_errors` preenchido — o campo é o que permite distinguir, sem adivinhar pelo texto,
+"o redator primário não respondeu" (mensagem de infraestrutura, ex. `"timed out"`) de "o
+redator respondeu, mas a resposta foi rejeitada por falta de fundamentação" (um motivo por
+passo, ex. `"passo 1: número sem suporte na citação"`); ver o exemplo `answered` degradado na
+seção 7, capturado exatamente desse jeito nesta máquina de desenvolvimento (sem Ollama local
+disponível).
+
+**Limitações conhecidas, documentadas como `xfail` em `tests/test_grounding.py`** (honestidade
+deliberada: são lacunas reais do validador, não hipotéticas):
+- **Número por extenso não é conferido.** A checagem 4 usa uma regex que só reconhece dígitos
+  (`\b\d+(?:[.,]\d+)?\b`); uma ação que escreve "noventa N" onde a citação diz "45 N" não é
+  comparada numericamente e passa sem erro (`test_numero_por_extenso_diverge_da_citacao_sem_ser_detectado`).
+- **O conteúdo de `unanswered` não passa pela validação.** O campo (o que o modelo declara não
+  conseguir responder, exibido sob "Limitações") não é conferido contra nenhuma evidência —
+  texto procedural contrabandeado ali (torque, EPI, etapa) não é sinalizado
+  (`test_conteudo_procedural_em_unanswered_nao_e_sinalizado`).
 
 **Comportamento medido:** o timeout de geração era fixo em 60s antes de virar `OLLAMA_TIMEOUT`;
 em uma estação sem GPU o `qwen2.5:7b` gera a ~1,3 tok/s e nenhuma resposta terminava dentro
@@ -278,10 +309,6 @@ As recusas são `return` em código (`app/guardrails/request_policy.py`,
 `app/guardrails/safety.py`), avaliadas antes de qualquer chamada de rede. Um pedido
 adversarial nunca é repassado ao modelo em seu texto original — confiar ao próprio modelo a
 tarefa de ignorar a instrução seria o mesmo erro que este guardrail existe para evitar.
-
-**Limite conhecido:** o campo `unanswered` do rascunho (o que o modelo declara não conseguir
-responder) é exibido sob "Limitações" e **não passa pela validação de citação literal**. Ele
-é moldurado como limitação, não como instrução ao operador, mas é texto do modelo.
 
 ### Decisão documentada: `eccentric_rotor` fica sem documento
 
@@ -412,6 +439,88 @@ demonstração), e a configuração reflete isso de forma deliberada:
   O caminho de produção é autenticação (token/OIDC), aprovação humana de documentos antes
   da indexação e segregação de rede por planta.
 
+### 6.5 Persistência de documentos enviados
+
+Um documento cadastrado via `POST /documentos` (chat/API) precisa sobreviver a um restart do
+processo — o índice vetorial (`VectorIndex`) é volátil em memória, então o que garante a
+persistência é a combinação de dois fatores independentes:
+
+1. **Arquivo em disco**: gravado em `Settings.uploads_dir` (default `data_uploads/`, variável
+   `UPLOADS_DIR`) com nome saneado (`família--stem--sufixo_aleatório.ext`, ver
+   `app/api/main.py::_safe_filename`). No Docker Compose, esse diretório é o volume nomeado
+   `uploads` (`docker-compose.yml`, serviço `api`) — sobrevive a `docker compose down` sem
+   `-v` e a `docker compose restart api`. Em execução local sem Docker, é uma pasta comum no
+   diretório de trabalho (`data_uploads/`, ignorada pelo `.gitignore` — nunca versionada).
+2. **Registro no Postgres**: `DocumentRegistry.register()` grava `family`, `title` e o
+   `source_path` do arquivo na tabela `documents`, protegida por
+   `UniqueConstraint(family, title)` (`migrations/versions/0004_documents_unique_family_title.py`).
+
+No **próximo bootstrap** (próxima subida do processo), `scripts/bootstrap.py::build_state`
+ingere primeiro os documentos de seed (`PDF_MAP`) e depois chama
+`ingest_registry_documents(registry, index, seed_paths)`, que varre `registry.list_documents()`
+e reindexa — no índice vetorial novo, em memória — todo documento cujo `source_path` não é de
+seed e cujo arquivo ainda existe em disco. É essa reidratação que faz `ventoinha` (por exemplo)
+continuar respondendo `diagnostico` depois de um `docker compose restart api`, em vez de voltar
+a `sem_documento` como um índice vazio ingênuo faria.
+
+**Política de duplicidade.** `POST /documentos` verifica `family` + `title` (normalizado:
+`strip` + case-insensitive) **antes** de gravar qualquer byte em disco ou ingerir qualquer
+chunk — uma segunda tentativa com a mesma família e título recebe `409 Conflict`, sem criar
+arquivo órfão nem inflar o índice. Uma segunda linha de defesa (a `UniqueConstraint` do banco)
+cobre a janela de corrida entre duas requisições concorrentes que passam pelo pré-check antes
+de qualquer uma commitar — mesmo `409` nos dois caminhos (`tests/test_document_persistence.py`
+e a suíte de `/documentos` em `tests/test_api.py` cobrem ambos).
+
+**Validações do upload**, todas em código antes de tocar o disco: extensão em `.pdf`, `.md` ou
+`.txt` (`422` para qualquer outra); tamanho até 10 MB (`422` acima disso); `family` restrita a
+`[a-z0-9_]{1,40}` (bloqueia travessia de diretório, inclusive após normalização — `422` para
+qualquer coisa fora desse formato, mesmo famílias reais precisam ser `snake_case`); e o arquivo
+precisa gerar ao menos um chunk com conteúdo real (`422` para arquivo vazio ou só whitespace,
+como aconteceria com um PDF escaneado sem texto — o mesmo problema do `Doc1.pdf` original,
+seção 4c).
+
+**Limitação conhecida: `source_path` é relativo ao ambiente que gravou o upload.** O caminho
+salvo no Postgres é o caminho **local ao processo** que recebeu o `POST /documentos` — se o
+banco foi populado por um container Docker (`UPLOADS_DIR=/srv/data_uploads`) e depois a API
+sobe localmente sem Docker (`UPLOADS_DIR=data_uploads`, caminho relativo diferente), o
+bootstrap local não encontra o arquivo naquele `source_path` e reporta o documento como não
+reidratado (`ingest_registry_documents` retorna o path na lista `not_ingested`, com um aviso no
+log — não derruba o bootstrap). Isso é o comportamento **correto** entre ambientes com
+diretórios de upload distintos, não um bug: o registro no banco (família, título) continua
+íntegro, só a reidratação automática do índice depende do arquivo estar acessível no
+`uploads_dir` do processo atual. Manter o mesmo `UPLOADS_DIR` (ou o mesmo volume Docker) entre
+subidas evita o problema.
+
+### 6.6 Como rodar os testes
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+`requirements-dev.txt` referencia `requirements.txt` inteiro (inclui `sentence-transformers`,
+`torch` e `faiss-cpu`) — é o mesmo ambiente usado para desenvolver. Contagem medida rodando a
+suíte de verdade: **195 testes aprovados + 2 `xfailed`** (os dois `xfail` são as limitações
+documentadas do validador de fundamentação, seção 5 — `strict=True`: viram falha de CI se
+alguém "consertar" o comportamento sem atualizar o teste), em cerca de **4 minutos** nesta
+máquina de desenvolvimento (Python 3.14, sem GPU). O pipeline de CI (`.github/workflows/ci.yml`)
+roda a mesma suíte contra um subconjunto mais leve das dependências (`requirements-ci.txt`, sem
+`sentence-transformers`/`torch`/`faiss-cpu`) em menos da metade do tempo (~2 min medidos) — a
+justificativa dessa escolha está no comentário de `requirements-ci.txt`.
+
+A estratégia de teste combina quatro camadas: testes de unidade para as regras determinísticas
+(normalização de rótulos, interpretação de pergunta, estatísticas de ocorrência, guardrails de
+segurança); testes de contrato da API via `fastapi.testclient.TestClient` com pipelines e
+LLMs **fake** (`app/llm` nunca é chamado de verdade nesses testes — nem Ollama nem OpenAI);
+testes adversariais dedicados ao validador de fundamentação (`app/llm/grounding.py`) —
+citação inventada, número trocado, negação invertida, evidência ambígua entre famílias; e
+testes de migration que aplicam `alembic upgrade head` de verdade contra um SQLite de arquivo
+temporário e inspecionam o schema resultante, em vez de confiar no autogenerate. **Nenhum
+teste depende de rede, GPU ou de um Postgres/Ollama externos de fato no ar** — onde o código de
+produção fala com um desses serviços, o teste usa SQLite (arquivo ou memória, conforme o
+cenário) ou aponta o `OllamaRenderer` real para uma porta sem nada escutando, para provar a
+degradação sem exigir infraestrutura.
+
 ## 7. Endpoints (exemplos de request/response)
 
 Todas as rotas estão documentadas interativamente em `/docs` (Swagger, gerado
@@ -463,7 +572,8 @@ Resposta (ilustrativa — o texto de `message` varia conforme o redator ativo; `
   "sources": ["Doc6.pdf"],
   "renderer": "ollama",
   "degraded": false,
-  "family_votes": {"cocked_rotor": 16, "rolamento_combination": 8, "normal": 6, "rolamento_ball": 5, "correia": 5, "desalinhado": 4, "rolamento_outer": 4, "rolamento_inner": 2}
+  "family_votes": {"cocked_rotor": 16, "rolamento_combination": 8, "normal": 6, "rolamento_ball": 5, "correia": 5, "desalinhado": 4, "rolamento_outer": 4, "rolamento_inner": 2},
+  "neighbor_count": 50
 }
 ```
 
@@ -516,7 +626,8 @@ sem qualquer reescala, com a mesma sujeira de tipo descrita na seção 4(b):
   "sources": [],
   "renderer": null,
   "degraded": false,
-  "family_votes": {"ventoinha": 13, "rolamento_combination": 10, "polia": 7, "cocked_rotor": 6, "rolamento_ball": 5, "rolamento_outer": 4, "normal": 2, "eccentric_rotor": 2, "rolamento_inner": 1}
+  "family_votes": {"ventoinha": 13, "rolamento_combination": 10, "polia": 7, "cocked_rotor": 6, "rolamento_ball": 5, "rolamento_outer": 4, "normal": 2, "eccentric_rotor": 2, "rolamento_inner": 1},
+  "neighbor_count": 50
 }
 ```
 
@@ -559,23 +670,88 @@ em vez de `0.564`.
   "sources": [],
   "renderer": null,
   "degraded": false,
-  "family_votes": {"normal": 28, "motor_desligado": 16, "rolamento_combination": 2, "baseline": 2, "rolamento_ball": 1, "cocked_rotor": 1}
+  "family_votes": {"normal": 28, "motor_desligado": 16, "rolamento_combination": 2, "baseline": 2, "rolamento_ball": 1, "cocked_rotor": 1},
+  "neighbor_count": 50
 }
 ```
 
+**`neighbor_count` × `total_ocorrencias`: duas grandezas diferentes.** O kNN vota entre os
+`neighbor_count` vizinhos mais próximos (`k=50`, clampado ao tamanho do histórico se ele for
+menor que 50 — nunca aconteceu na prática, o corpus tem 166.796 registros) — é essa votação,
+distribuída em `family_votes`, que decide a família dominante. Uma vez identificada a família,
+as estatísticas de histórico (`total_ocorrencias`, `freq_per_day`, distribuição no tempo)
+cobrem **todos** os registros daquela família no dataset inteiro, não apenas os `neighbor_count`
+vizinhos consultados — é essa contagem completa que responde à leitura do enunciado da prova
+("quantidade de eventos similares já registrados"). Nos três exemplos acima os 166.796
+registros do histórico superam folgadamente `k=50`, então `neighbor_count` sai sempre 50; o
+campo existe para o caso geral (`SimilarityEngine.query`, parâmetro `k`) e para deixar explícito
+que uma votação entre 50 vizinhos não é a mesma coisa que "50 ocorrências".
+
 ### `POST /chat`
 
+O contrato de resposta (`ChatOut`) tem oito campos: `status`, `resposta`, `families`,
+`fontes`, `renderer`, `degraded`, `limitations` e `validation_errors` — bem mais que o
+`resposta`/`fontes`/`degraded` das primeiras versões da API. Os dois exemplos abaixo são
+captura real (`TestClient`, dataset e documentos reais, mesma técnica de
+`tests/test_document_persistence.py`), não texto redigido à mão.
+
+**Caso 1 — `answered` (família `correia`, documentada).**
+
 ```json
-{"pergunta": "como corrigir correia frouxa?", "modo": "offline"}
+{"pergunta": "como ajustar a correia frouxa?", "modo": "offline"}
 ```
 
 ```json
 {
-  "resposta": "DEFEITO IDENTIFICADO: correia\n...\nFONTE: Doc4.pdf",
+  "status": "answered",
+  "resposta": "Não foi possível validar uma resposta gerada. Abaixo estão somente os trechos recuperados:\n- [correia:E1; Doc4.pdf — seção 2. Remover a correia antiga.] 2. Remover a correia antiga.\n- [correia:E2; Doc4.pdf — seção 9. Verificação da Tensão da Correia] 9. Verificação da Tensão da Correia\n- [correia:E3; Doc4.pdf — seção 4. Instalar nova correia.] 4. Instalar nova correia.\n- [correia:E4; Doc4.pdf — seção 5. Verificar estabilidade da correia.] 5. Verificar estabilidade da correia. \nComparar os resultados com os valores anteriores.\nLimitações:\n- Nenhuma evidência de segurança, parada ou bloqueio foi recuperada. Esta resposta não autoriza a execução da intervenção.",
+  "families": ["correia"],
   "fontes": ["Doc4.pdf"],
-  "degraded": false
+  "renderer": "template",
+  "degraded": true,
+  "limitations": [
+    "Nenhuma evidência de segurança, parada ou bloqueio foi recuperada. Esta resposta não autoriza a execução da intervenção."
+  ],
+  "validation_errors": ["timed out"]
 }
 ```
+
+**Nota honesta sobre esta captura.** `degraded: true` e `renderer: "template"` não são um caso
+de erro escondido — são o resultado real de rodar `/chat` **nesta estação de desenvolvimento**,
+que não tem Docker/Ollama instalados (ver `docs/arquitetura.md`, "Ensaio real"). O `Router`
+tentou o redator primário (`OllamaRenderer`), a conexão falhou (`validation_errors: ["timed
+out"]`), e caiu no `TemplateRenderer` — exatamente o caminho provado em
+`tests/test_degradacao_ponta.py`. A resposta ainda é útil e honesta: cita os quatro trechos
+reais de `Doc4.pdf` recuperados pelo RAG, com evidência identificada (`correia:E1`..`E4`), e
+declara a limitação de segurança. Na estação alvo (GPU 16 GB, Ollama local com
+`qwen2.5:7b-instruct`), o mesmo pedido tende a retornar `renderer: "ollama"` e
+`degraded: false` — desde que o rascunho do modelo passe pelas seis conferências da seção 5;
+a seção 5 também documenta um caso real em que isso não aconteceu, mesmo com o Ollama
+respondendo dentro do prazo.
+
+**Caso 2 — `undocumented` (família `falta_fase`, reconhecida, sem documento).**
+
+```json
+{"pergunta": "como corrigir falta de fase?", "modo": "offline"}
+```
+
+```json
+{
+  "status": "undocumented",
+  "resposta": "Reconheci o problema como falta fase, mas ainda não existe documento orientativo cadastrado para essa manutenção.",
+  "families": ["falta_fase"],
+  "fontes": [],
+  "renderer": null,
+  "degraded": false,
+  "limitations": [],
+  "validation_errors": []
+}
+```
+
+Este segundo caso nunca toca o RAG nem o LLM: `app/chat/responses.py::undocumented_report` é
+um `return` em código puro, assim que `PrescriptivePipeline.answer_question` confirma que
+nenhuma das famílias reconhecidas na pergunta tem documento cadastrado — o mesmo guardrail
+estrutural da seção 5, acionado pela porta do chat em vez da porta de `/eventos`.
 
 #### Interpretação determinística da pergunta
 
@@ -659,36 +835,54 @@ A partir dessa chamada, `state.registry.register("ventoinha", ...)` passa a resp
 ```
 app/
 ├── api/
-│   ├── main.py          # create_app(): rotas /health, /eventos, /chat, /documentos
-│   ├── schemas.py        # EventIn, DiagnosisOut, ChatIn, ChatOut (Pydantic)
-│   └── state.py           # AppState: pipeline, registry, index, df — injetado por rota
+│   ├── main.py            # create_app(): rotas /health, /eventos, /chat, /documentos
+│   ├── schemas.py           # EventIn, DiagnosisOut, ChatIn, ChatOut (Pydantic)
+│   └── state.py               # AppState: pipeline, registry, index, df, session_factory
 ├── core/
-│   └── config.py           # Settings (pydantic-settings) via .env
+│   └── config.py                # Settings (pydantic-settings) via .env
+├── chat/                          # interpretação determinística da pergunta (antes de RAG/LLM)
+│   ├── analyzer.py                  # analyze_question(): intenção, famílias, negação, escopo
+│   ├── catalog.py                     # vocabulário curado: aliases, sintomas, frases de escopo
+│   ├── context.py                       # ChatContext: pergunta + N famílias + evidência
+│   ├── normalization.py                   # normalize_text / find_phrase_spans / is_negated
+│   ├── responses.py                         # respostas 100% determinísticas (sem RAG nem LLM)
+│   └── types.py                               # ChatIntent, QueryScope, ChatReport
 ├── data/
 │   ├── labels.py            # normalize_label(): 151 rótulos brutos -> 17 famílias canônicas
-│   ├── loader.py              # load_dataset(): lê banner.xlsx, valida colunas, normaliza fault
-│   ├── dataset_store.py         # ensure_dataset(): seed único de sensor_readings a partir do
-│   │                             # xlsx (se vazia); load_from_db() em todo boot
-│   ├── models.py                # SQLAlchemy: Event, Diagnosis, Document, SensorReading
-│   ├── db.py                     # make_session_factory()
-│   └── registry.py                # DocumentRegistry: seed dos 6 docs + registro de novos
+│   ├── loader.py               # load_dataset(): lê banner.xlsx, valida colunas, normaliza fault
+│   ├── dataset_store.py          # ensure_dataset(): seed único de sensor_readings a partir do
+│   │                              # xlsx (se vazia) + load_from_db() em todo boot
+│   ├── models.py                    # SQLAlchemy: Event, Diagnosis, Document, SensorReading
+│   ├── db.py                          # make_session_factory()
+│   └── registry.py                      # DocumentRegistry: seed dos 9 docs + registro de novos
 ├── similarity/
-│   ├── engine.py                   # SimilarityEngine: kNN (k=50) sobre features escaladas
-│   └── stats.py                     # occurrence_stats(): contagem, frequência, janela temporal
+│   ├── engine.py                          # SimilarityEngine: kNN (k=50) sobre features escaladas
+│   └── stats.py                             # occurrence_stats(): contagem, frequência, janela
 ├── rag/
-│   ├── chunking.py                   # chunk_pdf/chunk_file: segmentação por seção numerada
-│   ├── embedding.py                   # EmbeddingService (e5-base local, import pesado lazy)
-│   ├── index.py                        # VectorIndex: FAISS IndexFlatIP por família
-│   └── ingest.py                        # ingest_pdf(): orquestra chunking + indexação
+│   ├── chunking.py                            # chunk_pdf/chunk_file: segmentação por seção
+│   ├── embedding.py                             # EmbeddingService (e5-base local, lazy)
+│   ├── family_sections.py                         # isola seções por subtipo de rolamento
+│   ├── index.py                                     # VectorIndex: FAISS IndexFlatIP (fallback
+│   │                                                 # numpy puro sem faiss, ver seção 6.6/CI)
+│   ├── ingest.py                                      # ingest_pdf(): chunking + filtro + índice
+│   ├── retrieval.py                                     # retrieve_evidence(): busca focada ou
+│   │                                                     # completa (RetrievalBundle)
+│   └── search.py                                          # SearchHit, EvidenceItem, RetrievalBundle
 ├── llm/
-│   ├── base.py                          # DiagnosisContext, prompt do sistema, build_user_prompt
-│   ├── router.py                         # Router: redator primário + fallback com degradação
-│   ├── template_fallback.py               # TemplateRenderer: fallback determinístico sem LLM
-│   ├── ollama_adapter.py                   # OllamaRenderer (modo offline)
-│   └── openai_adapter.py                    # OpenAIRenderer (modo online)
+│   ├── base.py                                              # DiagnosisContext, prompts, contrato JSON
+│   ├── contracts.py                                           # GroundedStep/GroundedDraft (Pydantic)
+│   ├── grounding.py                                             # valida cada ação contra a evidência
+│   │                                                             # citada — ver seção 5
+│   ├── router.py                                                  # Router: primário + fallback com
+│   │                                                                # degradação e validation_errors
+│   ├── template_fallback.py                                         # TemplateRenderer: fallback sem LLM
+│   ├── ollama_adapter.py                                               # OllamaRenderer (modo offline)
+│   └── openai_adapter.py                                                 # OpenAIRenderer (modo online)
 ├── guardrails/
-│   └── policy.py                             # decide(): estado | documentado | nao_documentado
-└── pipeline.py                                 # PrescriptivePipeline: orquestra tudo acima
+│   ├── policy.py               # decide(): estado | documentado | nao_documentado
+│   ├── request_policy.py         # recusa pedidos de prompt interno / conhecimento externo
+│   └── safety.py                   # recusa intervenção com a máquina em funcionamento
+└── pipeline.py                       # PrescriptivePipeline: orquestra tudo acima
 
 dashboard/
 └── app.py            # Streamlit: Histórico (gráficos), Diagnóstico & Chat, Documentos
@@ -699,16 +893,40 @@ scripts/
 
 migrations/
 └── versions/
-    ├── 0001_initial.py          # Alembic: schema inicial (events, diagnoses, documents)
-    └── 0002_sensor_readings.py  # Alembic: tabela sensor_readings (histórico do banner.xlsx)
+    ├── 0001_initial.py                         # schema inicial (events, diagnoses, documents)
+    ├── 0002_sensor_readings.py                   # tabela sensor_readings (histórico do xlsx)
+    ├── 0003_diagnoses_event_fk.py                  # FK diagnoses.event_id -> events.id
+    └── 0004_documents_unique_family_title.py         # UNIQUE(family, title) em documents
 
 docs_fontes/
 └── doc1_rolamentos.md   # transcrição do Doc1.pdf (PDF escaneado, sem texto extraível)
 
-docker-compose.yml, Dockerfile.api, Dockerfile.dashboard, .dockerignore
-requirements.txt, .env.example, alembic.ini
-banner.xlsx, Doc2.pdf..Doc6.pdf   # seed do histórico (uma vez por volume) e base documental
-docs/arquitetura.md   # roteiro de demo da entrevista + mapa de critérios de avaliação
+demo/                                  # payloads e roteiro determinísticos p/ demonstração
+├── evento_correia.json                  # id=102543 — falha documentada (Doc4.pdf)
+├── evento_ventoinha.json                  # id=122940 — falha sem documento cadastrado
+├── evento_normal.json                       # id=1782 — estado de operação (não é falha)
+├── procedimento_ventoinha_demo.md             # documento curto p/ cadastro ao vivo na demo
+└── README.md                                    # mapa de proveniência + comandos curl/PowerShell
+
+tests/
+└── test_*.py   # suíte versionada (21 módulos — ver seção 6.6 "Como rodar os testes"):
+                 # unidade, contrato da API com fakes de LLM, adversariais do validador de
+                 # fundamentação, migrations aplicadas de verdade contra SQLite real
+
+.github/
+└── workflows/
+    └── ci.yml   # GitHub Actions: pytest a cada push/PR em main (badge no topo deste arquivo)
+
+docker-compose.yml, docker-compose.gpu.yml, Dockerfile.api, Dockerfile.dashboard, .dockerignore
+docker-compose.override.yml   # local, NÃO versionado (.gitignore) — remapeamento de portas etc.
+requirements.txt, requirements-dev.txt, requirements-ci.txt, .env.example, alembic.ini, pytest.ini
+banner.xlsx                    # seed único de sensor_readings (uma vez por volume de Postgres)
+Doc1.pdf                       # original escaneado, NÃO ingerido — ver seção 4c (docs_fontes/ no lugar)
+Doc2.pdf..Doc6.pdf             # base documental (RAG) para as famílias com documento
+docs/arquitetura.md            # roteiro de demo da entrevista + mapa de critérios de avaliação
+
+data_uploads/   # runtime, NÃO versionado (.gitignore) — documentos cadastrados via
+                # POST /documentos; volume nomeado `uploads` no docker-compose.yml (seção 6.5)
 ```
 
 ## 9. Evolução futura

@@ -1,13 +1,16 @@
 """Valida cada acao gerada contra a evidencia que ela alega citar.
 
 Premissa do modulo: *instrucao de prompt nao e garantia*. O prompt pede que o
-modelo nao invente EPIs, torques ou etapas; aqui isso e VERIFICADO. Quatro
+modelo nao invente EPIs, torques ou etapas; aqui isso e VERIFICADO. Seis
 conferencias por passo:
 
 1. o evidence_id existe no contexto recuperado;
 2. a familia declarada bate com a da evidencia;
 3. a citacao e substring literal do trecho (normalizada);
-4. a acao e lexicalmente sustentada pela citacao e nao introduz numeros novos.
+4. todo numero da acao aparece na citacao (nada de torque inventado);
+5. a acao e lexicalmente sustentada pela citacao (suporte >= 0.60);
+6. negacao presente em apenas um dos lados (acao ou citacao) reprova —
+   inverter o sentido da evidencia tambem e alucinacao.
 
 Qualquer passo reprovado invalida o rascunho INTEIRO — meia resposta
 fundamentada e meia inventada continua sendo uma resposta inventada.

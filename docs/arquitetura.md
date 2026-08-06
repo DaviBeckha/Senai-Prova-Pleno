@@ -206,7 +206,7 @@ a seção de elementos rolantes, e o modelo poderia citar a frequência do defei
 toda a aparência de estar fundamentado — o pior tipo de alucinação, porque vem com fonte.
 
 `app/rag/family_sections.py` faz esse recorte na ingestão, e há regressão automatizada contra
-o documento real (`tests/rag/test_family_sections.py`) para pista interna, pista externa e o
+o documento real (`tests/test_rag_family_sections.py`) para pista interna, pista externa e o
 caso combinado.
 
 Vale mostrar também a resposta multifamília: "a correia está frouxa e a polia está com folga"
@@ -229,10 +229,12 @@ modelo a use.
 ~~~
 
 O ponto a narrar no caso 1: o redator não devolve texto, devolve um JSON em que cada ação vem
-amarrada à citação literal que a sustenta. O `Router` confere passo a passo antes de o
-operador ver qualquer coisa — `evidence_id` existente, citação literal, suporte lexical, e
-nenhum número que não esteja na citação. Se um único passo reprovar, a resposta inteira é
-descartada e o operador recebe os trechos crus com `degraded: true`.
+amarrada à citação literal que a sustenta. O `Router` confere seis coisas por passo antes de o
+operador ver qualquer coisa — `evidence_id` existente, família compatível com a evidência,
+citação literal (normalizada), nenhum número que não esteja na citação, suporte lexical mínimo
+de 0,60 e negação sem correspondência entre ação e citação (ver README, seção 5). Se um único
+passo reprovar, a resposta inteira é descartada e o operador recebe os trechos crus com
+`degraded: true`.
 
 Vale mostrar também a limitação de segurança: mesmo quando a resposta é válida, se nenhum
 trecho recuperado falar de parada ou bloqueio, ela sai dizendo que **não autoriza a execução
@@ -256,7 +258,7 @@ liberação para executar com a máquina em funcionamento.
 | `ollama` fica `unhealthy` por mais de alguns minutos | Conferir se o `ollama pull qwen2.5:7b-instruct` do passo 1 realmente rodou (`docker compose ps`, depois `docker exec -it <container> ollama list`) — sem o modelo baixado o healthcheck nunca passa, mas a API continua respondendo com o template (mesmo caso do primeiro sintoma) | Passo 1 deste roteiro |
 | Dashboard trava/demora em uma chamada | `DASHBOARD_TIMEOUT=330` (compose) dá margem para uma geração lenta em CPU; se estourar mesmo assim, repetir a chamada em modo offline com um payload de `demo/` em vez do sorteio aleatório, para eliminar variância de linha | `demo/README.md` |
 | Reexecutar este roteiro antes da entrevista deixa `ventoinha` já cadastrada (os volumes `pgdata` e `uploads` sobrevivem a um `docker compose down` sem `-v`) — o passo 4 passaria a devolver `diagnostico` em vez de `sem_documento`, e o passo 5 (cadastro do documento) tomaria `409` (família já documentada) | **Reset seletivo pré-entrevista**: `docker compose down` seguido de `docker volume rm <projeto>_pgdata <projeto>_uploads` — conferir os nomes reais com `docker volume ls` (o prefixo é o nome do projeto Compose, por padrão o nome do diretório, ex. `senai-prova-pleno_pgdata`); **não** remover o volume `ollama` (evita repuxar alguns GB do modelo). Subir de novo com `docker compose up --build` e aceitar o reseed do `banner.xlsx` (~2 min) | Passo 5 deste roteiro |
-| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.git/info/exclude`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | Ver a linha "`postgres` não fica `healthy`" desta mesma tabela — o mesmo tipo de override que remapeia a porta do Postgres pode remapear a da API |
+| Portas do `docker compose up` não são `8000`/`8501` (os comandos deste roteiro falham ou conectam no serviço errado) | Rodar `docker compose config` antes da entrevista e conferir as portas **efetivas** publicadas para `api`/`dashboard`: um `docker-compose.override.yml` local (não versionado, ver `.gitignore`) pode remapear portas para resolver conflito com outro serviço na máquina. Se não forem 8000/8501, ajustar os comandos deste roteiro para a porta remapeada ou remover/renomear o override antes de começar | Ver a linha "`postgres` não fica `healthy`" desta mesma tabela — o mesmo tipo de override que remapeia a porta do Postgres pode remapear a da API |
 
 ## Ensaio real (pendente — Docker indisponível nesta estação)
 
@@ -303,11 +305,11 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 |---|---|
 | Arquitetura proposta para implantação do projeto | `README.md`, seção "Arquitetura e fluxo" (diagrama) e "Como rodar" (`docker-compose.yml`, `Dockerfile.api`, `Dockerfile.dashboard`) — Postgres, Ollama, API e dashboard como serviços independentes |
 | Organização do código | Separação por camada em `app/` (`api`, `core`, `data`, `similarity`, `rag`, `llm`, `guardrails`, `pipeline.py`) com contratos explícitos entre módulos (ver README, seção 2) |
-| Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degraded`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`) |
-| Organização do repositório GitHub | Estrutura de diretórios documentada no README (seção 8); histórico de commits atômicos por etapa do pipeline |
-| Versionamento | Schema de banco versionado via Alembic (`migrations/versions/0001_initial.py`); commits atômicos e descritivos |
+| Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degraded`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`); suíte automatizada versionada (195 testes + 2 xfailed documentados — ver README, "Como rodar os testes") validada em CI a cada push/PR (`.github/workflows/ci.yml`) |
+| Organização do repositório GitHub | Estrutura de diretórios documentada no README (seção 8); histórico de commits atômicos por etapa do pipeline; integração contínua no GitHub Actions |
+| Versionamento | Schema de banco versionado via Alembic, quatro migrations incrementais em `migrations/versions/` (`0001_initial.py`, `0002_sensor_readings.py`, `0003_diagnoses_event_fk.py`, `0004_documents_unique_family_title.py`); commits atômicos e descritivos |
 | Documentação | Este `docs/arquitetura.md` + `README.md` (visão geral, diagrama, decisões técnicas justificadas, como rodar, exemplos de request/response) |
-| Interpretação do problema | Guardrail anti-alucinação implementado como decisão de código (RF4); kNN por similaridade em vez de classificador pré-treinado, alinhado à frase do enunciado "não depende necessariamente da classificação prévia de falhas conhecidas" |
+| Interpretação do problema | Guardrail anti-alucinação implementado como decisão de código (RF4); kNN por similaridade em vez de classificador pré-treinado, alinhado à frase do enunciado "não depende necessariamente da classificação prévia de falhas conhecidas"; registro de novos documentos pelo usuário (RF5) completo — persistência em disco (`data_uploads/`) e no Postgres (`Document`, com `UniqueConstraint` em família+título via `migrations/versions/0004_documents_unique_family_title.py`), reidratação do índice vetorial após reinício (`scripts/bootstrap.py::ingest_registry_documents`) e efeito imediato na próxima consulta, sem reiniciar a API |
 | Entendimento dos objetivos do projeto | README, seção 1 (visão geral) e seção 4 (desafios reais dos dados) — decisões justificadas em cima dos dados reais fornecidos, não de um dataset idealizado |
 
 ### Avaliação da entrevista
