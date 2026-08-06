@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -25,7 +25,7 @@ class Event(Base):
 class Diagnosis(Base):
     __tablename__ = "diagnoses"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    event_id: Mapped[int] = mapped_column(Integer)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     status: Mapped[str] = mapped_column(String(32))
     family: Mapped[str] = mapped_column(String(64))
