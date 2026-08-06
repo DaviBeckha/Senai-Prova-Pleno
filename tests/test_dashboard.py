@@ -171,7 +171,7 @@ def test_motivo_do_empate_nomeia_as_familias_e_pede_cautela():
 
     assert "3 famílias" in texto
     assert "9 de 50" in texto
-    assert "hipótese" in texto
+    assert "nenhuma família foi escolhida" in texto.lower()
     assert "rolamento ball" in texto
 
 

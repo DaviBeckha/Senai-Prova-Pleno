@@ -126,6 +126,18 @@ def _retrieve_family(
             len(hit.chunk.text)
             for hit in (*safety, *validation)
         )
+        if mandatory_chars > complete_max_chars:
+            # Segurança e validação são indivisíveis em um procedimento
+            # completo. Se nem o bloco obrigatório cabe no orçamento, é mais
+            # seguro declarar evidência insuficiente do que truncá-lo.
+            return FamilyEvidence(
+                family,
+                (),
+                complete=False,
+                omitted_chunks=len(
+                    _deduplicate([*safety, *procedure, *validation])
+                ),
+            )
         procedure, omitted = _limit_complete(
             procedure,
             complete_max_chars - mandatory_chars,

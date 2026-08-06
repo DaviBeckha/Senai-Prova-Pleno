@@ -122,4 +122,7 @@ def select_procedure_hits(
                 ContentRole.VALIDATION,
             }
         ]
-    return selected if complete else selected[:k]
+    # Uma pergunta pode solicitar mais ações distintas que o k configurado.
+    # Nesse caso, preservar uma evidência por ação é mais importante que o
+    # limite nominal, que continua valendo para perguntas menos compostas.
+    return selected if complete else selected[:max(k, len(actions))]

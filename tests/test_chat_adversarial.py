@@ -427,6 +427,16 @@ def test_inspecao_com_seguranca_preserva_a_acao_de_inspecionar():
     assert analysis.requested_actions == ("inspect",)
 
 
+def test_verificacoes_de_seguranca_com_inspecao_explicita_preservam_inspecao():
+    analysis = analyze_question(
+        "Quais verificações de segurança devo fazer e como inspecionar a correia?"
+    )
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is False
+    assert analysis.requested_actions == ("inspect",)
+
+
 @pytest.mark.parametrize("verb", ("remover", "instalar"))
 def test_remover_e_instalar_sao_intervencoes_de_substituicao(verb):
     analysis = analyze_question(f"Como {verb} uma correia?")

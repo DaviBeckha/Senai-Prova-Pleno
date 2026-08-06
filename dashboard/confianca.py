@@ -41,12 +41,15 @@ class Confianca:
         if not self.inconclusiva:
             return ""
         if self.houve_empate:
-            nomes = ", ".join(rotular(familia) for familia in self.empatadas)
+            nomes = ", ".join(
+                rotular(familia)
+                for familia in (self.vencedora, *self.empatadas)
+            )
             return (
                 f"Classificação inconclusiva: {len(self.empatadas) + 1} famílias "
                 f"empataram com {self.votos} de {self.total} votos "
-                f"({rotular(self.vencedora)}, {nomes}). O desempate foi pela ordem "
-                "do histórico, não por evidência. Trate como hipótese."
+                f"({nomes}). Nenhuma família foi escolhida; confirme os sintomas "
+                "e colete novas medições."
             )
         return ""
 

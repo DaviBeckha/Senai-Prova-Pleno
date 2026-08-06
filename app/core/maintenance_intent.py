@@ -102,6 +102,10 @@ _SAFETY_ONLY_REQUEST = re.compile(
 
 def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
     normalized = normalize_text(value)
+    # "verificações de segurança" descreve o tema da pergunta, não uma
+    # inspeção de manutenção. Removemos somente essa expressão para ainda
+    # preservar ações explícitas adicionais, como "inspecionar a correia".
+    normalized = _SAFETY_ONLY_REQUEST.sub(" seguranca ", normalized)
     actions = [
         action
         for action, pattern in _ACTION_PATTERNS
@@ -138,6 +142,7 @@ def is_safety_only_request(value: str) -> bool:
     return bool(
         _SAFETY_REQUEST.search(normalized)
         and _SAFETY_ONLY_REQUEST.search(normalized)
+        and not detect_actions(normalized)
     )
 
 

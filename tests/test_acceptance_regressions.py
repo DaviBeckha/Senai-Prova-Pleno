@@ -203,7 +203,7 @@ CHAT_CASES = (
     ("CHAT-009", "Como tratar defeito nas esferas do rolamento?", ("rolamento_ball",), ("repair",), False),
     ("CHAT-010", "Qual e o procedimento para falha combinada de rolamento?", ("rolamento_combination",), ("repair",), False),
     ("CHAT-011", "Como ajustar correia e polia no mesmo conjunto?", ("correia", "polia"), ("adjust",), False),
-    ("CHAT-012", "Quais verificacoes de seguranca devem ser feitas antes de mexer na correia?", ("correia",), ("inspect",), True),
+    ("CHAT-012", "Quais verificacoes de seguranca devem ser feitas antes de mexer na correia?", ("correia",), (), True),
     ("CHAT-013", "Como tratar defeito na esfera do rolamento?", ("rolamento_ball",), ("repair",), False),
     ("CHAT-014", "Qual e o procedimento para falha combinada no rolamento?", ("rolamento_combination",), ("repair",), False),
     ("CHAT-015", "Posso ajustar a correia com a maquina ligada?", ("correia",), ("adjust",), False),

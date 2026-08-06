@@ -1,6 +1,7 @@
 from app.chat.analyzer import analyze_question
 from app.core.maintenance_intent import ContentRole
 from app.rag.chunking import Chunk
+from app.rag.reranking import select_procedure_hits
 from app.rag.retrieval import retrieve_evidence
 from app.rag.search import SearchHit
 
@@ -199,6 +200,51 @@ def test_multiplas_acoes_reservam_evidencia_para_cada_uma():
 
     roles = {item.chunk.content_role for item in bundle.items}
     assert roles == {ContentRole.INSPECTION, ContentRole.REPLACEMENT}
+
+
+def test_bloco_obrigatorio_maior_que_orcamento_falha_fechado():
+    analysis = analyze_question(
+        "Qual o procedimento completo para trocar uma correia?"
+    )
+
+    bundle = retrieve_evidence(
+        LayeredFakeIndex(),
+        analysis.original,
+        analysis.explicit_families,
+        analysis,
+        k=4,
+        min_score=0.0,
+        complete_max_chars=10,
+    )
+
+    assert bundle.has_evidence is False
+    assert bundle.families[0].complete is False
+    assert bundle.families[0].omitted_chunks > 0
+
+
+def test_reserva_por_acao_pode_ultrapassar_k_sem_descartar_acao():
+    analysis = analyze_question(
+        "Como diagnosticar, inspecionar, ajustar, alinhar, lubrificar, trocar "
+        "e validar a correia?"
+    )
+    hits = [
+        SearchHit(_chunk(role.value, role, position), 0.9 - position * 0.01)
+        for position, role in enumerate((
+            ContentRole.DIAGNOSIS,
+            ContentRole.INSPECTION,
+            ContentRole.ADJUSTMENT,
+            ContentRole.ALIGNMENT,
+            ContentRole.LUBRICATION,
+            ContentRole.REPLACEMENT,
+            ContentRole.VALIDATION,
+        ))
+    ]
+
+    selected = select_procedure_hits(hits, analysis, k=4, complete=False)
+
+    assert {hit.chunk.content_role for hit in selected} == {
+        hit.chunk.content_role for hit in hits
+    }
 
 
 def test_procedimento_completo_nao_devolve_bloco_geral_irrelevante():
