@@ -91,6 +91,15 @@ def test_variacoes_de_mexer_com_maquina_ligada_geram_orientacao(question):
             "O que é indicado para medir a tensão da correia "
             "com o motor ligado?"
         ),
+        "Posso fazer uma manutenção na correia com o motor ligado?",
+        (
+            "Posso medir novamente a tensão da correia "
+            "com o motor ligado?"
+        ),
+        (
+            "Estou medindo agora a tensão da correia "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_novas_intervencoes_com_maquina_ligada_geram_orientacao(question):
@@ -151,6 +160,20 @@ def test_conjugacoes_das_novas_intervencoes_geram_orientacao(question):
             "O que significa tensionar e posso chamar isso de ajuste "
             "da correia com o motor ligado?"
         ),
+        "O que é tensionar uma correia com o motor ligado?",
+        "O que é fazer manutenção na correia com o motor ligado?",
+        "Explique o que é limpar uma correia com o motor ligado.",
+        (
+            "Qual a diferença entre tensionar e esticar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e para que serve esticar "
+            "a correia com o motor ligado?"
+        ),
+        "A correia tensionada está correta com o motor ligado?",
+        "A correia calibrada está adequada com o motor ligado?",
+        "A correia limpa está adequada com o motor ligado?",
     ),
 )
 def test_novos_termos_sem_pedido_fisico_nao_acionam_guardrail(question):

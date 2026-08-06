@@ -64,7 +64,7 @@ REPLACEMENT_CONDITIONS = frozenset({
 
 
 _REGULAR_AR_SUFFIX = (
-    r"(?:ar|ares|armos|ardes|arem|ando|ad[oa]s?|"
+    r"(?:ar|ares|armos|ardes|arem|ando|"
     r"o|a|as|amos|ais|am|ei|aste|ou|astes|aram|"
     r"ava|avas|avamos|aveis|avam|"
     r"ara|aras|aramos|areis|arao|arei|aremos|"
@@ -93,10 +93,10 @@ _DO_FRAGMENT = (
     r"feit[oa]s?)"
 )
 _MAINTENANCE_PHRASE_FRAGMENT = (
-    rf"{_DO_FRAGMENT}\s+(?:a\s+)?manutencao"
+    rf"{_DO_FRAGMENT}\s+(?:(?:a|uma)\s+)?manutencao"
 )
 _MEASURE_FRAGMENT = (
-    r"(?:med(?:ir|ires|irmos|irdes|irem|indo|id[oa]s?|"
+    r"(?:med(?:ir|ires|irmos|irdes|irem|indo|"
     r"e|es|imos|is|em|i|iste|iu|istes|iram|"
     r"ia|ias|iamos|ieis|iam|"
     r"irei|iras|ira|iremos|ireis|irao|"
@@ -104,8 +104,12 @@ _MEASURE_FRAGMENT = (
     r"isse|isses|issemos|isseis|issem)|"
     r"mec(?:o|a|as|amos|am))"
 )
+_MEASUREMENT_MODIFIER = (
+    r"(?:(?:novamente|agora|diretamente|manualmente|primeiro|"
+    r"antes|depois|cuidadosamente|outra vez)\s+){0,2}"
+)
 _TENSION_MEASUREMENT_FRAGMENT = (
-    rf"{_MEASURE_FRAGMENT}\s+(?:a\s+)?tensao"
+    rf"{_MEASURE_FRAGMENT}\s+{_MEASUREMENT_MODIFIER}(?:a\s+)?tensao"
 )
 _ADDITIONAL_PHYSICAL_FRAGMENT = "|".join((
     _TOUCH_FRAGMENT,
@@ -205,6 +209,9 @@ _EXPLANATION_REQUEST = re.compile(
 )
 _PURE_CONCEPTUAL_REQUEST = re.compile(
     rf"^(?:"
+    rf"qual (?:e )?a diferenca entre\s+"
+    rf"(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b\s+e\s+"
+    rf"(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b|"
     r"o que significa\b|"
     rf"o que e\s+(?:{_EXPLICIT_PHYSICAL_FRAGMENT})\b|"
     r"qual (?:e )?a (?:definicao|funcao|diferenca)\b|"
@@ -221,11 +228,19 @@ _PURE_CONCEPTUAL_REQUEST = re.compile(
 _CONCEPTUAL_CLAUSE_SEPARATOR = re.compile(
     r"\b(?:e|mas|ou|tambem|depois|entao)\b"
 )
+_CONCEPTUAL_CLAUSE_PREFIX = re.compile(
+    r"^(?:o que significa|o que e|qual (?:e )?a "
+    r"(?:definicao|funcao|diferenca)|para que serve|como funciona|"
+    r"fale sobre|defina|conceitue|explique)\b"
+)
 _PROCEDURAL_NOMINAL_CUE = re.compile(
     r"\b(?:procedimento|passo a passo|etapas?|forma de)\b"
 )
 _FACTUAL_REQUEST = re.compile(
     r"\b(?:custo|preco|valor|data|prazo|responsavel)\b|"
+    r"\best(?:a|ao)\s+(?:corret[oa]s?|adequad[oa]s?)\b"
+)
+_STATIVE_FACTUAL_REQUEST = re.compile(
     r"\best(?:a|ao)\s+(?:corret[oa]s?|adequad[oa]s?)\b"
 )
 _ADDITIONAL_ACTION_CLAUSE = re.compile(
@@ -314,17 +329,29 @@ def is_explanation_request(value: str) -> bool:
 
 def is_factual_request(value: str) -> bool:
     normalized = normalize_text(value)
+    if _STATIVE_FACTUAL_REQUEST.search(normalized):
+        return not (
+            _PROCEDURAL_CLAUSE_CUE.match(normalized)
+            or _COORDINATED_IMPERATIVE.search(normalized)
+            or _AMBIGUOUS_IMPERATIVE.match(normalized)
+        )
     return bool(
         _FACTUAL_REQUEST.search(normalized)
         and not has_explicit_physical_intervention(normalized)
     )
 
 
-def _has_follow_up_physical_action(normalized: str) -> bool:
-    clauses = _CONCEPTUAL_CLAUSE_SEPARATOR.split(normalized)[1:]
+def _has_follow_up_physical_action(
+    normalized: str,
+    conceptual_end: int,
+) -> bool:
+    remainder = normalized[conceptual_end:]
+    clauses = _CONCEPTUAL_CLAUSE_SEPARATOR.split(remainder)[1:]
     for raw_clause in clauses:
         clause = raw_clause.lstrip(" ,;:")
         clause = re.sub(r"^por favor\s+", "", clause)
+        if _CONCEPTUAL_CLAUSE_PREFIX.match(clause):
+            continue
         if (
             _EXPLICIT_PHYSICAL_INTERVENTION.search(clause)
             or _AMBIGUOUS_IMPERATIVE.match(clause)
@@ -340,9 +367,13 @@ def has_explicit_physical_intervention(value: str) -> bool:
         or _AMBIGUOUS_IMPERATIVE.match(normalized)
     ):
         return True
+    conceptual = _PURE_CONCEPTUAL_REQUEST.match(normalized)
     if (
-        _PURE_CONCEPTUAL_REQUEST.match(normalized)
-        and not _has_follow_up_physical_action(normalized)
+        conceptual
+        and not _has_follow_up_physical_action(
+            normalized,
+            conceptual.end(),
+        )
     ):
         return False
     return bool(_EXPLICIT_PHYSICAL_INTERVENTION.search(normalized))
@@ -388,10 +419,12 @@ def requests_physical_intervention(
     actions: tuple[MaintenanceAction, ...] | None = None,
 ) -> bool:
     normalized = normalize_text(value)
-    if has_explicit_physical_intervention(normalized):
-        return True
     if is_explanation_request(value):
         return False
+    if is_factual_request(value):
+        return False
+    if has_explicit_physical_intervention(normalized):
+        return True
     classified_actions = detect_actions(value) if actions is None else actions
     return (
         any(is_intervention_action(action) for action in classified_actions)

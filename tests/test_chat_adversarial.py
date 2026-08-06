@@ -632,6 +632,9 @@ def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
         "O aperto da correia está correto?",
         "Qual o custo da limpeza da correia?",
         "A medição da tensão da correia está correta?",
+        "A correia tensionada está correta com o motor ligado?",
+        "A correia calibrada está adequada com o motor ligado?",
+        "A correia limpa está adequada com o motor ligado?",
     ),
 )
 def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
@@ -654,6 +657,17 @@ def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question)
         (
             "O que significa tensionar e posso chamar isso de ajuste "
             "da correia com o motor ligado?"
+        ),
+        "O que é tensionar uma correia com o motor ligado?",
+        "O que é fazer manutenção na correia com o motor ligado?",
+        "Explique o que é limpar uma correia com o motor ligado.",
+        (
+            "Qual a diferença entre tensionar e esticar a correia "
+            "com o motor ligado?"
+        ),
+        (
+            "O que significa tensionar e para que serve esticar "
+            "a correia com o motor ligado?"
         ),
     ),
 )

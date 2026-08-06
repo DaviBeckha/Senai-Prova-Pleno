@@ -455,6 +455,15 @@ def test_controles_deterministicos_nao_chamam_redator():
             "O que é indicado para medir a tensão da correia "
             "com o motor ligado?"
         ),
+        "Posso fazer uma manutenção na correia com o motor ligado?",
+        (
+            "Posso medir novamente a tensão da correia "
+            "com o motor ligado?"
+        ),
+        (
+            "Estou medindo agora a tensão da correia "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):
