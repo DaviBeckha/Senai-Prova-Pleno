@@ -9,15 +9,11 @@ do dominio, contagem de historico.
 from collections.abc import Callable
 
 from app.chat.types import ChatReport
-
-
-def _display(family: str) -> str:
-    """Identificador interno -> forma legivel ao operador (falta_fase -> falta fase)."""
-    return family.replace("_", " ")
+from app.data.labels import display_label
 
 
 def _names(families: tuple[str, ...]) -> str:
-    return ", ".join(_display(family) for family in families)
+    return ", ".join(display_label(family) for family in families)
 
 
 def document_status_report(
@@ -114,7 +110,7 @@ def history_report(
     for family in families:
         stats = stats_by_family[family]
         lines.append(
-            f"{_display(family)}: {stats.total} ocorrências; "
+            f"{display_label(family)}: {stats.total} ocorrências; "
             f"{stats.freq_per_day} por dia; período de "
             f"{stats.first_seen[:10]} a {stats.last_seen[:10]}."
         )

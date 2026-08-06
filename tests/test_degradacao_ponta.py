@@ -114,13 +114,14 @@ def test_eventos_sobrevive_com_ollama_fora_do_ar():
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "diagnostico"
-    assert data["family"] == "correia"
-    # Contrato real de DiagnosisOut: degraded/renderer existem e denunciam a
+    assert data["familia"] == "correia"
+    assert data["rotulo"] == "Correia"
+    # Contrato real de DiagnosticoOut: degradado/redator existem e denunciam a
     # degradacao explicitamente — nao e preciso inferir pelo texto.
-    assert data["degraded"] is True
-    assert data["renderer"] == "template"
+    assert data["degradado"] is True
+    assert data["redator"] == "template"
     # Alem do marcador, o efeito observavel: instrucoes do template
     # deterministico (evidencia crua), nao uma sintese de LLM.
-    assert "Doc4.pdf" in data["message"]
-    assert "Afrouxar os parafusos do motor" in data["message"]
-    assert data["sources"] == ["Doc4.pdf"]
+    assert "Doc4.pdf" in data["mensagem"]
+    assert "Afrouxar os parafusos do motor" in data["mensagem"]
+    assert data["fontes"] == ["Doc4.pdf"]

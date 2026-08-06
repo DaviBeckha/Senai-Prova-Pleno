@@ -1,5 +1,11 @@
 import pytest
-from app.data.labels import normalize_label
+from app.data.labels import (
+    DISPLAY_LABELS,
+    FAULT_FAMILIES,
+    STATE_FAMILIES,
+    display_label,
+    normalize_label,
+)
 
 CASES = [
     ("normal", "normal", "estado"),
@@ -74,3 +80,44 @@ def test_adversarial_regression(raw, family, kind):
     # Final check
     assert info.family == family
     assert info.kind == kind
+
+
+# --- Camada de apresentacao: rotulo em portugues ---------------------------
+#
+# Os slugs de familia sao chave de dominio (Document.family, SensorReading.family,
+# doc_family do RAG, allowlist do POST /documentos). A traducao vive em
+# DISPLAY_LABELS como camada de apresentacao — nunca como renomeacao.
+
+
+def test_toda_familia_conhecida_tem_rotulo_em_portugues():
+    """Teste de completude: familia nova sem rotulo quebra aqui, nao na tela.
+
+    display_label degrada para family.replace("_", " ") quando falta a entrada,
+    o que evita 500 mas deixaria "cocked rotor" no meio de uma frase em
+    portugues — exatamente o vazamento que DISPLAY_LABELS existe para fechar.
+    """
+    for family in FAULT_FAMILIES | STATE_FAMILIES:
+        assert family in DISPLAY_LABELS, f"familia sem rotulo em portugues: {family}"
+
+
+def test_nenhum_rotulo_carrega_underscore_ou_slug_cru():
+    for family, rotulo in DISPLAY_LABELS.items():
+        assert "_" not in rotulo, f"{family}: rotulo ainda com underscore ({rotulo})"
+        assert rotulo != family or family in {"correia", "polia", "normal", "teste"}, (
+            f"{family}: rotulo identico ao slug"
+        )
+
+
+def test_display_label_traduz_os_slugs_em_ingles():
+    # As seis familias que apareciam em ingles nos graficos e no chat.
+    assert display_label("rolamento_inner") == "Rolamento — pista interna"
+    assert display_label("rolamento_outer") == "Rolamento — pista externa"
+    assert display_label("rolamento_ball") == "Rolamento — esferas"
+    assert display_label("rolamento_combination") == "Rolamento — falha combinada"
+    assert display_label("cocked_rotor") == "Rotor desalinhado no eixo"
+    assert display_label("eccentric_rotor") == "Rotor excêntrico"
+
+
+def test_display_label_degrada_sem_levantar_para_familia_desconhecida():
+    # Um rotulo imperfeito na tela e preferivel a um 500 no diagnostico.
+    assert display_label("familia_que_nao_existe") == "familia que nao existe"

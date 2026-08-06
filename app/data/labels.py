@@ -16,6 +16,56 @@ class LabelInfo:
     kind: str
 
 
+# Identificador interno -> nome que o operador le na tela e no texto gerado.
+#
+# Os slugs sao chave de dominio: aparecem em Document.family e
+# SensorReading.family (banco), no filtro de secao do RAG (doc_family) e na
+# allowlist _FAMILY_RE do POST /documentos. Renomea-los quebraria o banco, o
+# indice e o contrato. Por isso a traducao vive AQUI, como camada de
+# apresentacao, e nunca como renomeacao — quem persiste continua vendo
+# "cocked_rotor", quem le a tela ve "Rotor desalinhado no eixo".
+#
+# Fonte unica: consumido por app/chat/responses.py (texto do chat),
+# app/pipeline.py (mensagens de diagnostico) e GET /familias (vocabulario do
+# dashboard). O teste de completude em tests/test_labels.py quebra se uma
+# familia nova entrar em FAULT_FAMILIES/STATE_FAMILIES sem rotulo aqui.
+DISPLAY_LABELS: dict[str, str] = {
+    # Falhas
+    "rolamento_inner": "Rolamento — pista interna",
+    "rolamento_outer": "Rolamento — pista externa",
+    "rolamento_ball": "Rolamento — esferas",
+    "rolamento_combination": "Rolamento — falha combinada",
+    "desalinhado": "Desalinhamento",
+    "desbalanceado": "Desbalanceamento",
+    "correia": "Correia",
+    "polia": "Polia",
+    "cocked_rotor": "Rotor desalinhado no eixo",
+    "eccentric_rotor": "Rotor excêntrico",
+    "ventoinha": "Ventoinha",
+    "falta_fase": "Falta de fase",
+    # Estados de operacao
+    "normal": "Normal",
+    "baseline": "Linha de base",
+    "teste": "Teste",
+    "acelerando": "Em aceleração",
+    "motor_desligado": "Motor desligado",
+    # Desfecho de normalize_label quando nenhuma regra casa
+    "desconhecido": "Não identificado",
+}
+
+
+def display_label(family: str) -> str:
+    """Rotulo em portugues de uma familia, com degradacao previsivel.
+
+    Uma familia sem entrada em DISPLAY_LABELS cai no antigo comportamento de
+    app/chat/responses.py::_display (troca "_" por espaco) em vez de levantar:
+    um rotulo imperfeito na tela e preferivel a uma resposta de diagnostico
+    que falha com 500. O teste de completude cobre o caso esperado; este
+    fallback cobre o inesperado.
+    """
+    return DISPLAY_LABELS.get(family) or family.replace("_", " ")
+
+
 _RULES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"rolamento_inner"), "rolamento_inner"),
     (re.compile(r"rolamento_outer"), "rolamento_outer"),

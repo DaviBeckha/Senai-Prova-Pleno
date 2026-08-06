@@ -13,6 +13,7 @@ from app.chat.responses import (
     undocumented_report,
 )
 from app.chat.types import ChatIntent, ChatReport
+from app.data.labels import display_label
 from app.guardrails.policy import decide
 from app.guardrails.request_policy import RequestOutcome, inspect_request
 from app.guardrails.safety import (
@@ -65,6 +66,20 @@ class DiagnosisReport:
     # um construtor futuro que esquecer o campo deve quebrar em vez de
     # herdar silenciosamente um 0 incorreto.
     neighbor_count: int
+    # Janela historica da familia vencedora. occurrence_stats ja calculava os
+    # tres desde sempre (app/similarity/stats.py) e o relatorio descartava:
+    # so total e freq_per_day chegavam ao cliente. Sem eles a tela informa a
+    # media diaria sem dizer sobre qual periodo ela foi medida — 1.499,88/dia
+    # significa coisas diferentes em 8 ou em 47 dias.
+    first_seen: str
+    last_seen: str
+    per_day: dict[str, int]
+    # Por que a geracao foi rejeitada pela validacao de fundamentacao.
+    # answer_question ja propagava outcome.validation_errors; diagnose()
+    # descartava, e o campo nem existia aqui. Sem ele, os 43,75% de respostas
+    # que caem em template extrativo (medido em eval_results/2026-08-06/
+    # summary.json) chegam a tela indistinguiveis de uma geracao aceita.
+    validation_errors: list[str]
 
 
 class PrescriptivePipeline:
@@ -101,18 +116,38 @@ class PrescriptivePipeline:
         decision = decide(result, self._registry.has_document)
         stats = occurrence_stats(self._df, decision.family)
 
+        # Os campos comuns aos quatro desfechos ficam em um dict nomeado: com
+        # 14 campos no relatorio, a construcao posicional deixaria de ser
+        # legivel e um campo novo no meio da lista silenciosamente deslocaria
+        # os seguintes.
+        def _report(status: str, message: str, *,
+                    sources: list[str] | None = None,
+                    renderer: str | None = None,
+                    degraded: bool = False,
+                    validation_errors: tuple[str, ...] | list[str] = ()) -> DiagnosisReport:
+            return DiagnosisReport(
+                status=status,
+                family=decision.family,
+                message=message,
+                total_ocorrencias=stats.total,
+                freq_per_day=stats.freq_per_day,
+                sources=sources or [],
+                renderer=renderer,
+                degraded=degraded,
+                family_votes=result.family_votes,
+                neighbor_count=len(result.neighbor_ids),
+                first_seen=stats.first_seen,
+                last_seen=stats.last_seen,
+                per_day=stats.per_day,
+                validation_errors=list(validation_errors),
+            )
+
         if decision.outcome == "estado":
-            return DiagnosisReport(
-                "estado", decision.family,
-                MSG_ESTADO.format(family=decision.family),
-                stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes, len(result.neighbor_ids))
+            return _report("estado", MSG_ESTADO.format(
+                family=display_label(decision.family)))
         if decision.outcome == "nao_documentado":
-            return DiagnosisReport(
-                "sem_documento", decision.family,
-                MSG_SEM_DOCUMENTO.format(family=decision.family),
-                stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes, len(result.neighbor_ids))
+            return _report("sem_documento", MSG_SEM_DOCUMENTO.format(
+                family=display_label(decision.family)))
 
         hits = self._index.search(f"como corrigir {decision.family}",
                                   doc_family=decision.family,
@@ -124,18 +159,17 @@ class PrescriptivePipeline:
             # utilizavel: gerar diagnostico aqui seria infundado (sem fonte,
             # sem acoes). Contencao honesta em vez de status "sucesso" vazio;
             # o LLM/router nunca e chamado neste ramo.
-            return DiagnosisReport(
-                "sem_documento", decision.family,
-                MSG_SEM_TRECHOS.format(family=decision.family),
-                stats.total, stats.freq_per_day, [], None, False,
-                result.family_votes, len(result.neighbor_ids))
+            return _report("sem_documento", MSG_SEM_TRECHOS.format(
+                family=display_label(decision.family)))
         ctx = DiagnosisContext(decision.family, stats, chunks, event)
         outcome = self._pick_router(mode).render(ctx)
-        return DiagnosisReport(
-            "diagnostico", decision.family, outcome.text, stats.total,
-            stats.freq_per_day, sorted({c.source for c in chunks}),
-            outcome.renderer, outcome.degraded, result.family_votes,
-            len(result.neighbor_ids))
+        return _report(
+            "diagnostico", outcome.text,
+            sources=sorted({c.source for c in chunks}),
+            renderer=outcome.renderer,
+            degraded=outcome.degraded,
+            validation_errors=outcome.validation_errors,
+        )
 
     def answer_question(self, pergunta: str, mode: str | None = None) -> ChatReport:
         # A intencao e resolvida ANTES de tocar RAG ou LLM: a maioria das

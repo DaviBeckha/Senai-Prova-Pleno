@@ -21,9 +21,16 @@ class FakePipeline:
 
     def diagnose(self, event, mode=None):
         self.last_mode = mode
-        return DiagnosisReport("diagnostico", "correia", "ajustar tensao",
-                               10, 1.5, ["Doc4.pdf"], "template", False,
-                               {"correia": 10}, 10)
+        # Construcao nomeada: o relatorio tem 14 campos e um novo no meio da
+        # lista deslocaria os posicionais seguintes sem erro de tipo.
+        return DiagnosisReport(
+            status="diagnostico", family="correia", message="ajustar tensao",
+            total_ocorrencias=10, freq_per_day=1.5, sources=["Doc4.pdf"],
+            renderer="template", degraded=False, family_votes={"correia": 10},
+            neighbor_count=10, first_seen="2026-06-01T00:00:00+00:00",
+            last_seen="2026-06-08T00:00:00+00:00", per_day={"2026-06-01": 10},
+            validation_errors=["passo 1: ação possui suporte lexical de 0.50"],
+        )
 
     def answer_question(self, pergunta, mode=None):
         self.last_mode = mode
@@ -80,9 +87,54 @@ def test_eventos_retorna_diagnostico():
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "diagnostico"
-    assert data["sources"] == ["Doc4.pdf"]
-    assert data["family_votes"] == {"correia": 10}
-    assert data["neighbor_count"] == 10
+    assert data["fontes"] == ["Doc4.pdf"]
+    assert data["votos_por_familia"] == {"correia": 10}
+    assert data["vizinhos_consultados"] == 10
+
+
+def test_eventos_contrato_em_portugues_sem_campos_em_ingles():
+    # O contrato HTTP e integralmente em portugues. Este teste falha se um
+    # campo em ingles voltar por descuido — a traducao acontece nas fabricas
+    # `de_relatorio` de app/api/schemas.py, e os relatorios internos
+    # (DiagnosisReport/ChatReport) seguem em ingles de proposito.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert set(data) == {
+        "status", "familia", "rotulo", "mensagem", "total_ocorrencias",
+        "frequencia_por_dia", "ocorrencias", "fontes", "redator", "degradado",
+        "erros_de_validacao", "votos_por_familia", "vizinhos_consultados",
+    }
+
+
+def test_eventos_expoe_rotulo_em_portugues_da_familia():
+    # O slug segue sendo a chave de dominio; o rotulo e o que a tela mostra.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert data["familia"] == "correia"
+    assert data["rotulo"] == "Correia"
+
+
+def test_eventos_expoe_janela_de_ocorrencias():
+    # occurrence_stats sempre calculou first_seen/last_seen/per_day e o
+    # contrato antigo descartava os tres: sem a janela, frequencia_por_dia nao
+    # diz sobre qual periodo a media foi medida.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert data["ocorrencias"]["primeira"] == "2026-06-01T00:00:00+00:00"
+    assert data["ocorrencias"]["ultima"] == "2026-06-08T00:00:00+00:00"
+    assert data["ocorrencias"]["por_dia"] == {"2026-06-01": 10}
+
+
+def test_eventos_expoe_erros_de_validacao():
+    # recommended_order[7] de eval_results/2026-08-06/summary.json: o motivo da
+    # rejeicao existia apenas no log do servidor. Sem ele na resposta, uma
+    # mensagem em template extrativo chega a tela indistinguivel de uma
+    # geracao aceita pelo grounding.
+    body = {c: 0.1 for c in FEATURE_COLUMNS}
+    data = _client().post("/eventos", json=body).json()
+    assert data["erros_de_validacao"] == [
+        "passo 1: ação possui suporte lexical de 0.50"
+    ]
 
 
 def test_eventos_valida_campos():
@@ -121,9 +173,10 @@ def test_eventos_modo_invalido_retorna_422():
 
 
 def test_chat_fora_do_dominio():
-    # FakePipeline com answer_question que retorna undocumented (status real
-    # de app/chat/responses.py::undocumented_report — "sem_documento" e do
-    # DiagnosisReport de /eventos, um contrato diferente).
+    # O status interno "undocumented" (app/chat/responses.py::undocumented_report)
+    # sai no contrato HTTP como "sem_documento" — o MESMO termo que /eventos ja
+    # usava para a mesma ideia. A traducao no limite HTTP converge o vocabulario
+    # dos dois endpoints, que antes tinham nomes diferentes para o mesmo desfecho.
     class FakeChatPipeline(FakePipeline):
         def answer_question(self, pergunta, mode=None):
             return ChatReport(
@@ -137,7 +190,25 @@ def test_chat_fora_do_dominio():
     r = TestClient(app).post("/chat", json={"pergunta": "e a fase eletrica?"})
     data = r.json()
     assert "não documentado" in data["resposta"]
-    assert data["status"] == "undocumented"
+    assert data["status"] == "sem_documento"
+
+
+def test_chat_traduz_todos_os_status_internos_conhecidos():
+    # Teste de completude do mapa: um status novo no pipeline sem entrada em
+    # _STATUS_CHAT_PT atravessaria cru (o get tem fallback) e vazaria ingles
+    # para a tela. Aqui a lista conhecida e travada explicitamente.
+    from app.api.schemas import status_chat_pt
+
+    assert status_chat_pt("answered") == "respondido"
+    assert status_chat_pt("undocumented") == "sem_documento"
+    assert status_chat_pt("insufficient_evidence") == "evidencia_insuficiente"
+    assert status_chat_pt("refused_unsafe") == "recusado_seguranca"
+    assert status_chat_pt("refused_internal") == "recusado_interno"
+    assert status_chat_pt("needs_clarification") == "precisa_esclarecimento"
+    assert status_chat_pt("out_of_scope") == "fora_de_escopo"
+    assert status_chat_pt("state") == "estado"
+    assert status_chat_pt("documented") == "documentado"
+    assert status_chat_pt("partially_documented") == "parcialmente_documentado"
 
 
 def test_chat_expoe_contrato_completo():
@@ -162,16 +233,21 @@ def test_chat_expoe_contrato_completo():
     r = TestClient(app).post("/chat", json={"pergunta": "como corrigir correia?"})
     assert r.status_code == 200
     data = r.json()
-    assert data["status"] == "answered"
+    assert data["status"] == "respondido"
     assert data["resposta"] == (
         "- Ajustar tensão [Doc4.pdf — seção 9.1; evidência correia:E1]"
     )
-    assert data["families"] == ["correia"]
+    assert data["familias"] == ["correia"]
     assert data["fontes"] == ["Doc4.pdf"]
-    assert data["renderer"] == "ollama"
-    assert data["degraded"] is False
-    assert data["limitations"] == ["a evidência não cobre torque exato"]
-    assert data["validation_errors"] == []
+    assert data["redator"] == "ollama"
+    assert data["degradado"] is False
+    assert data["limitacoes"] == ["a evidência não cobre torque exato"]
+    assert data["erros_de_validacao"] == []
+    # Nenhum campo em ingles sobrando no contrato do /chat.
+    assert set(data) == {
+        "status", "resposta", "familias", "fontes", "redator", "degradado",
+        "limitacoes", "erros_de_validacao",
+    }
 
 
 def test_chat_expoe_validation_errors_quando_degradado():
@@ -195,8 +271,8 @@ def test_chat_expoe_validation_errors_quando_degradado():
     app.dependency_overrides[get_state] = lambda: state
     r = TestClient(app).post("/chat", json={"pergunta": "como corrigir correia?"})
     data = r.json()
-    assert data["degraded"] is True
-    assert data["validation_errors"] == [
+    assert data["degradado"] is True
+    assert data["erros_de_validacao"] == [
         "trecho sem referencia a nenhuma fonte recuperada"
     ]
 
