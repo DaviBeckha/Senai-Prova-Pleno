@@ -25,6 +25,7 @@ sqlalchemy==2.0.36
 alembic==1.14.0
 psycopg[binary]==3.2.3
 pandas==2.3.3
+pyarrow==18.1.0
 openpyxl==3.1.5
 scikit-learn==1.5.2
 pypdf>=5.1

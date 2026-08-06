@@ -8,12 +8,16 @@
 # interface.
 #
 # Sao exatamente os tres pacotes que o codigo de dashboard/ importa; o resto e
-# biblioteca padrao. pandas nao esta aqui porque nada em dashboard/ o importa —
-# ele entra de todo modo como dependencia do proprio streamlit.
+# biblioteca padrao. PyArrow e fixado explicitamente porque o Streamlit o usa
+# para serializar st.dataframe: a versao 25 encerra o processo com SIGSEGV em
+# reruns, enquanto a 18.1.0 preserva a mesma API e passou no teste de repeticao.
+# pandas nao esta aqui porque nada em dashboard/ o importa — ele entra de todo
+# modo como dependencia do proprio streamlit.
 #
 # Versoes fixadas iguais as de requirements.txt: httpx precisa concordar com o
 # que a API espera receber, e uma divergencia de streamlit/plotly mudaria o
 # comportamento da interface sem aviso.
 streamlit==1.40.2
+pyarrow==18.1.0
 plotly==5.24.1
 httpx==0.28.1

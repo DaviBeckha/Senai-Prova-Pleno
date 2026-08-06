@@ -66,6 +66,7 @@ services:
 
   dashboard:
     build: {context: ., dockerfile: Dockerfile.dashboard}
+    restart: unless-stopped
     environment:
       API_URL: http://api:8000
       DASHBOARD_TIMEOUT: ${DASHBOARD_TIMEOUT:-330}
