@@ -1,5 +1,7 @@
 # Manutenção Prescritiva — SENAI SC
 
+[![CI](https://github.com/DaviBeckha/Senai-Prova-Pleno/actions/workflows/ci.yml/badge.svg)](https://github.com/DaviBeckha/Senai-Prova-Pleno/actions/workflows/ci.yml)
+
 Projeto desenvolvido para o processo seletivo de Desenvolvedor Full Stack I.A. e Python
 (pleno) do SENAI SC. Autor: Davi Beckhauser.
 
@@ -488,6 +490,36 @@ diretórios de upload distintos, não um bug: o registro no banco (família, tí
 íntegro, só a reidratação automática do índice depende do arquivo estar acessível no
 `uploads_dir` do processo atual. Manter o mesmo `UPLOADS_DIR` (ou o mesmo volume Docker) entre
 subidas evita o problema.
+
+### 6.6 Como rodar os testes
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+`requirements-dev.txt` referencia `requirements.txt` inteiro (inclui `sentence-transformers`,
+`torch` e `faiss-cpu`) — é o mesmo ambiente usado para desenvolver. Contagem medida rodando a
+suíte de verdade: **195 testes aprovados + 2 `xfailed`** (os dois `xfail` são as limitações
+documentadas do validador de fundamentação, seção 5 — `strict=True`: viram falha de CI se
+alguém "consertar" o comportamento sem atualizar o teste), em cerca de **4 minutos** nesta
+máquina de desenvolvimento (Python 3.14, sem GPU). O pipeline de CI (`.github/workflows/ci.yml`)
+roda a mesma suíte contra um subconjunto mais leve das dependências (`requirements-ci.txt`, sem
+`sentence-transformers`/`torch`/`faiss-cpu`) em pouco mais da metade do tempo — ver a
+justificativa dessa escolha logo abaixo do link do workflow.
+
+A estratégia de teste combina quatro camadas: testes de unidade para as regras determinísticas
+(normalização de rótulos, interpretação de pergunta, estatísticas de ocorrência, guardrails de
+segurança); testes de contrato da API via `fastapi.testclient.TestClient` com pipelines e
+LLMs **fake** (`app/llm` nunca é chamado de verdade nesses testes — nem Ollama nem OpenAI);
+testes adversariais dedicados ao validador de fundamentação (`app/llm/grounding.py`) —
+citação inventada, número trocado, negação invertida, evidência ambígua entre famílias; e
+testes de migration que aplicam `alembic upgrade head` de verdade contra um SQLite de arquivo
+temporário e inspecionam o schema resultante, em vez de confiar no autogenerate. **Nenhum
+teste depende de rede, GPU ou de um Postgres/Ollama externos de fato no ar** — onde o código de
+produção fala com um desses serviços, o teste usa SQLite (arquivo ou memória, conforme o
+cenário) ou aponta o `OllamaRenderer` real para uma porta sem nada escutando, para provar a
+degradação sem exigir infraestrutura.
 
 ## 7. Endpoints (exemplos de request/response)
 
