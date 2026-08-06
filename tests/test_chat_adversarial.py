@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from app.chat.analyzer import analyze_question
+from app.chat.types import ChatIntent
 from app.data.loader import FEATURE_COLUMNS
 from app.llm.base import GROUNDED_JSON_CONTRACT
 from app.llm.router import Router
@@ -268,19 +269,29 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     # agressiva a ponto de bloquear perguntas de manutencao comuns feitas com
     # a maquina parada (mesmo comportamento ja observado para os verbos
     # "ajustar" e "substituir", que ja estavam na regra antes deste caso).
-    pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
+    replacement_chunk = Chunk(
+        "correia",
+        "Doc4.pdf",
+        "14. Substituição da Correia",
+        "substituir a correia e instalar uma nova",
+    )
+    pipeline = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": replacement_chunk},
+    )
 
     rep = pipeline.answer_question("posso trocar a correia?")
 
     assert rep.status == "answered"
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
-    assert "ajustar a tensao da correia" in rep.message
+    assert "substituir a correia e instalar uma nova" in rep.message
     # Segunda regra de safety.py (safety_evidence_limitation, usada em
     # app/pipeline.py): os trechos do fake nao tem vocabulario de seguranca
     # (desligar/bloqueio/etiquetagem/...), entao a resposta sai com a
     # limitacao anexada — mesmo sem ser recusada.
-    assert any("não autoriza a execução" in l for l in rep.limitations)
+    assert any("não autoriza a execução" in limitation for limitation in rep.limitations)
 
 
 # Formas conjugadas (imperativo/gerundio) dos verbos de intervencao: antes
@@ -369,3 +380,65 @@ def test_reprovacao_do_validador_degrada_a_resposta_final_do_chat():
     assert rep.degraded is True
     assert rep.validation_errors
     assert any("citação não encontrada" in e for e in rep.validation_errors)
+
+
+def test_esferas_do_rolamento_no_plural_entram_no_escopo():
+    analysis = analyze_question("Como tratar defeito nas esferas do rolamento?")
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.explicit_families == ("rolamento_ball",)
+
+
+def test_falha_combinada_de_rolamento_entra_no_escopo():
+    analysis = analyze_question("Qual o procedimento para falha combinada de rolamento?")
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.explicit_families == ("rolamento_combination",)
+
+
+def test_analise_preserva_multiplas_acoes_solicitadas():
+    analysis = analyze_question(
+        "Como inspecionar e trocar o rolamento da pista interna?"
+    )
+
+    assert analysis.requested_actions == ("inspect", "replace")
+
+
+def test_analise_expoe_condicoes_que_sustentam_substituicao():
+    analysis = analyze_question("Como corrigir uma correia com trincas e desgaste?")
+
+    assert analysis.conditions == frozenset({"trinca", "desgaste"})
+
+
+def test_analise_identifica_pedido_explicito_de_seguranca():
+    analysis = analyze_question(
+        "Quais verificacoes de seguranca devem ser feitas antes de mexer na correia?"
+    )
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is True
+
+
+def test_inspecao_com_seguranca_preserva_a_acao_de_inspecionar():
+    analysis = analyze_question("Como inspecionar a correia com segurança?")
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is False
+    assert analysis.requested_actions == ("inspect",)
+
+
+def test_verificacoes_de_seguranca_com_inspecao_explicita_preservam_inspecao():
+    analysis = analyze_question(
+        "Quais verificações de segurança devo fazer e como inspecionar a correia?"
+    )
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is False
+    assert analysis.requested_actions == ("inspect",)
+
+
+@pytest.mark.parametrize("verb", ("remover", "instalar"))
+def test_remover_e_instalar_sao_intervencoes_de_substituicao(verb):
+    analysis = analyze_question(f"Como {verb} uma correia?")
+
+    assert analysis.requested_actions == ("replace",)

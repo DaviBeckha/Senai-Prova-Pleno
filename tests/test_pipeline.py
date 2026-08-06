@@ -170,6 +170,38 @@ def test_estado_retorna_sem_diagnostico():
     assert sum(rep.family_votes.values()) == rep.neighbor_count
 
 
+def test_empate_do_knn_nao_chama_rag_nem_llm():
+    rows = []
+    families = ("correia", "rolamento_ball") * 25
+    for index, family in enumerate(families):
+        row = {column: 0.1 for column in FEATURE_COLUMNS}
+        row.update(
+            id=index,
+            family=family,
+            kind="falha",
+            created_at=pd.Timestamp("2026-06-01T00:00:00Z"),
+        )
+        rows.append(row)
+    df = pd.DataFrame(rows)
+
+    report = _pipeline(
+        df,
+        registry=AllDocumentedRegistry(),
+        index=RaisingIndex(),
+        router=RaisingRouter(),
+    ).diagnose(_event())
+
+    assert report.status == "diagnostico_inconclusivo"
+    assert report.family is None
+    assert report.candidate_families == ["correia", "rolamento_ball"]
+    assert report.top_vote_share == 0.5
+    assert report.vote_margin == 0
+    assert report.sources == []
+    assert report.renderer is None
+    assert report.total_ocorrencias == 0
+    assert report.freq_per_day == 0.0
+
+
 def test_falha_documentada_sem_trechos_retorna_sem_documento_sem_chamar_llm():
     # Falha documentada, mas o indice nao devolve nenhum trecho utilizavel:
     # contencao honesta (sem_documento) em vez de "diagnostico" infundado;

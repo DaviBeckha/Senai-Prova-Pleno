@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 
@@ -22,6 +22,7 @@ from app.guardrails.safety import (
     safety_evidence_limitation,
 )
 from app.llm.base import DiagnosisContext
+from app.llm.adequacy import validate_evidence_adequacy
 from app.llm.router import Router
 from app.rag.retrieval import retrieve_evidence
 from app.similarity.engine import SimilarityEngine
@@ -41,11 +42,15 @@ MSG_SEM_TRECHOS = (
     "nenhum trecho utilizável foi recuperado do índice. Reindexe o documento "
     "ou registre um novo para habilitar as recomendações."
 )
+MSG_DIAGNOSTICO_INCONCLUSIVO = (
+    "O kNN encontrou empate entre as famílias {families}. "
+    "O diagnóstico foi retido para não apresentar uma conclusão arbitrária."
+)
 
 @dataclass
 class DiagnosisReport:
     status: str
-    family: str
+    family: str | None
     message: str
     total_ocorrencias: int
     freq_per_day: float
@@ -71,15 +76,18 @@ class DiagnosisReport:
     # so total e freq_per_day chegavam ao cliente. Sem eles a tela informa a
     # media diaria sem dizer sobre qual periodo ela foi medida — 1.499,88/dia
     # significa coisas diferentes em 8 ou em 47 dias.
-    first_seen: str
-    last_seen: str
-    per_day: dict[str, int]
+    first_seen: str = ""
+    last_seen: str = ""
+    per_day: dict[str, int] = field(default_factory=dict)
     # Por que a geracao foi rejeitada pela validacao de fundamentacao.
     # answer_question ja propagava outcome.validation_errors; diagnose()
     # descartava, e o campo nem existia aqui. Sem ele, as respostas que caem em
     # template extrativo — 43,75% das geracoes numa avaliacao local do modo
     # offline — chegam a tela indistinguiveis de uma geracao aceita.
-    validation_errors: list[str]
+    validation_errors: list[str] = field(default_factory=list)
+    candidate_families: list[str] = field(default_factory=list)
+    top_vote_share: float = 0.0
+    vote_margin: int = 0
 
 
 class PrescriptivePipeline:
@@ -114,6 +122,29 @@ class PrescriptivePipeline:
     def diagnose(self, event: dict, mode: str | None = None) -> DiagnosisReport:
         result = self._engine.query(event)
         decision = decide(result, self._registry.has_document)
+        result_metadata = {
+            "candidate_families": list(result.candidate_families),
+            "top_vote_share": result.top_vote_share,
+            "vote_margin": result.vote_margin,
+        }
+        if decision.outcome == "inconclusivo":
+            return DiagnosisReport(
+                status="diagnostico_inconclusivo",
+                family=None,
+                message=MSG_DIAGNOSTICO_INCONCLUSIVO.format(
+                    families=", ".join(decision.candidate_families)
+                ),
+                total_ocorrencias=0,
+                freq_per_day=0.0,
+                sources=[],
+                renderer=None,
+                degraded=False,
+                family_votes=result.family_votes,
+                neighbor_count=len(result.neighbor_ids),
+                **result_metadata,
+            )
+
+        assert decision.family is not None
         stats = occurrence_stats(self._df, decision.family)
 
         # Os campos comuns aos quatro desfechos ficam em um dict nomeado: com
@@ -140,6 +171,7 @@ class PrescriptivePipeline:
                 last_seen=stats.last_seen,
                 per_day=stats.per_day,
                 validation_errors=list(validation_errors),
+                **result_metadata,
             )
 
         if decision.outcome == "estado":
@@ -149,11 +181,18 @@ class PrescriptivePipeline:
             return _report("sem_documento", MSG_SEM_DOCUMENTO.format(
                 family=display_label(decision.family)))
 
-        hits = self._index.search(f"como corrigir {decision.family}",
-                                  doc_family=decision.family,
-                                  k=self._rag_k,
-                                  min_score=self._rag_min_score)
-        chunks = [hit.chunk for hit in hits]
+        diagnosis_question = f"como corrigir {decision.family}"
+        diagnosis_analysis = analyze_question(diagnosis_question)
+        bundle = retrieve_evidence(
+            self._index,
+            diagnosis_question,
+            (decision.family,),
+            diagnosis_analysis,
+            k=self._rag_k,
+            min_score=self._rag_min_score,
+            complete_max_chars=self._rag_complete_max_chars,
+        )
+        chunks = [item.chunk for item in bundle.items]
         if not chunks:
             # Falha documentada, mas o indice nao devolveu nenhum trecho
             # utilizavel: gerar diagnostico aqui seria infundado (sem fonte,
@@ -163,8 +202,13 @@ class PrescriptivePipeline:
                 family=display_label(decision.family)))
         ctx = DiagnosisContext(decision.family, stats, chunks, event)
         outcome = self._pick_router(mode).render(ctx)
+        diagnosis_status = (
+            "diagnostico"
+            if outcome.answer_status == "answered"
+            else outcome.answer_status
+        )
         return _report(
-            "diagnostico", outcome.text,
+            diagnosis_status, outcome.text,
             sources=sorted({c.source for c in chunks}),
             renderer=outcome.renderer,
             degraded=outcome.degraded,
@@ -252,7 +296,7 @@ class PrescriptivePipeline:
             self._index,
             effective_question,
             documented,
-            analysis.scope,
+            analysis,
             k=self._rag_k,
             min_score=self._rag_min_score,
             complete_max_chars=self._rag_complete_max_chars,
@@ -271,6 +315,22 @@ class PrescriptivePipeline:
                 analysis.explicit_families,
             )
 
+        adequacy_errors = validate_evidence_adequacy(analysis, bundle)
+        if adequacy_errors:
+            return ChatReport(
+                status="insufficient_evidence",
+                message=(
+                    "Os trechos recuperados não cobrem todas as famílias e "
+                    "ações solicitadas. Não vou completar a orientação por "
+                    "inferência."
+                ),
+                families=analysis.explicit_families,
+                sources=tuple(sorted({
+                    item.chunk.source for item in bundle.items
+                })),
+                validation_errors=adequacy_errors,
+            )
+
         limitations.extend(bundle.limitations)
         if undocumented:
             limitations.append(
@@ -286,15 +346,19 @@ class PrescriptivePipeline:
             for family in documented
         }
         context = ChatContext(
-            effective_question,
-            documented,
-            stats_by_family,
-            bundle,
-            tuple(limitations),
+            question=effective_question,
+            families=documented,
+            stats_by_family=stats_by_family,
+            retrieval=bundle,
+            limitations=tuple(limitations),
+            requested_actions=analysis.requested_actions,
+            requires_safety=analysis.requires_safety,
+            conditions=analysis.conditions,
+            safety_only=analysis.safety_only,
         )
         outcome = self._pick_router(mode).render(context)
         return ChatReport(
-            status="answered",
+            status=outcome.answer_status,
             message=outcome.text,
             families=analysis.explicit_families,
             sources=tuple(sorted({item.chunk.source for item in bundle.items})),

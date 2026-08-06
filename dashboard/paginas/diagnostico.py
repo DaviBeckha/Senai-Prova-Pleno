@@ -3,9 +3,8 @@
 Tres coisas que a versao anterior nao mostrava e que mudam a leitura do
 resultado:
 
-1. Quanto o voto kNN realmente sustenta. A API responde `status: "diagnostico"`
-   tanto para 56% de suporte quanto para 18% com empate triplo, e a tela dizia
-   apenas "voto de 50 vizinhos mais proximos" — que se le como conclusao firme.
+1. Quanto o voto kNN realmente sustenta. Empates no topo agora chegam como
+   `diagnostico_inconclusivo`, sem familia escolhida e sem recomendacao.
 2. Se o texto veio do modelo ou de extracao deterministica. O campo `degradado`
    existia no contrato e nao era renderizado aqui: numa avaliacao local do modo
    offline, 43,75% das geracoes foram rejeitadas pelo grounding e cairam no
@@ -23,6 +22,7 @@ import confianca as conf
 import estado
 import formato
 import graficos
+import tempo
 import vocabulario
 
 st.title("Diagnóstico de evento")
@@ -64,9 +64,18 @@ if sortear:
     espera = ("A geração roda em CPU: ~30 s na mediana, mais em procedimento "
               "completo." if modo == "offline" else "Consultando o modelo remoto.")
     try:
+        def executar_diagnostico():
+            amostra_encontrada = api.amostra(escolhida)
+            resposta_encontrada = api.diagnosticar(
+                amostra_encontrada["features"],
+                modo,
+            )
+            return resposta_encontrada, amostra_encontrada
+
         with st.spinner(f"Sorteando leitura e diagnosticando… {espera}"):
-            amostra = api.amostra(escolhida)
-            resposta = api.diagnosticar(amostra["features"], modo)
+            execucao = tempo.medir(executar_diagnostico)
+        resposta, amostra = execucao.valor
+        resposta["_tempo_total"] = execucao.elapsed_seconds
         estado.guardar_diagnostico(resposta, amostra)
     except api.ErroDeApi as erro:
         estado.limpar_diagnostico()
@@ -84,6 +93,8 @@ st.divider()
 status = resposta["status"]
 st.subheader(vocabulario.titulo_diagnostico(status))
 st.caption(vocabulario.explicacao_diagnostico(status))
+if resposta.get("_tempo_total") is not None:
+    st.caption(f"Tempo total: {resposta['_tempo_total']:.2f}s")
 
 # --- Confianca do voto kNN ------------------------------------------------
 #

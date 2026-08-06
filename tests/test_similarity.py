@@ -25,6 +25,28 @@ def test_query_dominant_and_deterministic():
     assert r1.dominant_kind == "falha"
     assert r1.neighbor_ids == r2.neighbor_ids
     assert r1.family_votes["rolamento_inner"] == 10
+    assert r1.candidate_families == ("rolamento_inner",)
+    assert r1.top_vote_share == 1.0
+    assert r1.vote_margin == 10
+    assert r1.is_ambiguous is False
+
+
+def test_query_expoe_empate_exato_sem_escolher_conclusao_firme():
+    rows = []
+    for index, family in enumerate(("correia", "rolamento_ball") * 2):
+        row = {column: 0.1 for column in FEATURE_COLUMNS}
+        row.update(id=index, family=family, kind="falha")
+        rows.append(row)
+    engine = SimilarityEngine()
+    engine.fit(pd.DataFrame(rows))
+
+    result = engine.query({column: 0.1 for column in FEATURE_COLUMNS}, k=4)
+
+    assert result.family_votes == {"correia": 2, "rolamento_ball": 2}
+    assert result.candidate_families == ("correia", "rolamento_ball")
+    assert result.top_vote_share == 0.5
+    assert result.vote_margin == 0
+    assert result.is_ambiguous is True
 
 
 def test_fit_with_heterogeneous_types():

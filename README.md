@@ -188,7 +188,10 @@ sensor associado. O dashboard mostra o top-3 desses votos ao lado da comparaçã
 rótulo real e diagnóstico obtido. Essa é uma escolha deliberada de transparência: a decisão
 final (`family` dominante) continua sendo usada normalmente pelo guardrail e pelo RAG, mas
 o cliente da API pode auditar o quão disputada foi aquela votação em vez de receber uma
-falsa certeza.
+falsa certeza. Quando duas ou mais famílias empatam no maior número de votos, o resultado é
+`diagnostico_inconclusivo`: `family` fica nulo, as candidatas são expostas em
+`candidate_families` e o fluxo termina antes do RAG e do LLM. Sem empate, a API também
+expõe `top_vote_share` e `vote_margin`, sem impor um limiar arbitrário de confiança.
 
 ### e) Onde o histórico rotulado mora, e o que não entra nele
 
@@ -377,6 +380,19 @@ quando há GPU NVIDIA disponível:
    `deploy:` de reserva de GPU ao serviço `ollama` — requer `nvidia-container-toolkit`
    configurado no Docker Desktop/daemon; sem `-f docker-compose.gpu.yml`, esse bloco nunca
    entra no stack.
+
+   Para reiniciar o ambiente já baixado em uma GPU NVIDIA e confirmar que o modelo foi
+   realmente carregado nela:
+
+   ```powershell
+   docker compose down
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml exec ollama ollama ps
+   ```
+
+   Após uma geração, a coluna `PROCESSOR` do `ollama ps` deve mostrar `100% GPU`. Não use
+   `docker compose down -v` nesse fluxo: `-v` remove o volume que guarda o modelo e obriga
+   um novo download.
 2. **Ollama nativo do Windows** (fora do Docker): instalar o Ollama direto no host e definir
    `OLLAMA_BASE_URL=http://host.docker.internal:11434` no `.env` do projeto (ou exportar na
    shell antes de subir o compose) — o serviço `api` já lê essa variável do ambiente

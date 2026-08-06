@@ -1,33 +1,15 @@
 """Quanta confianca o voto kNN realmente sustenta.
 
-A API devolve `status: "diagnostico"` sempre que a familia vencedora tem
-documento e trechos — independentemente de ela ter vencido com 56% ou com 18%
-dos votos, e independentemente de ter havido empate no topo. Uma avaliacao local
-do modo offline mostrou o caso extremo: tres repeticoes do mesmo payload de
-correia elegeram a familia com **9 de 50 votos, empatada com rolamento_outer e
-rolamento_ball**, e a tela anunciava "Status: diagnostico | Familia: correia —
-voto de 50 vizinhos mais proximos", que se le como conclusao firme.
-
-Criar um status "inconclusivo" no backend e a correcao de fundo, e esta nao e a
-camada para isso: mudaria o contrato e o comportamento do guardrail. O que a
-interface pode e deve fazer agora e nao afirmar mais confianca do que os votos
-sustentam.
+O backend ja se contem quando duas ou mais familias empatam no maior numero de
+votos. Este modulo apresenta a distribuicao de modo auditavel. Nao aplica um
+limiar arbitrario a vitorias unicas: o suporte continua visivel, mas somente um
+empate exato transforma o resultado em inconclusivo.
 
 Modulo sem dependencia de Streamlit ou Plotly, de proposito: a regra e o que
 mais importa acertar, e assim ela e testavel como funcao pura.
 """
 
 from dataclasses import dataclass, field
-
-# Abaixo deste suporte, a familia vencedora e tratada como hipotese.
-#
-# O limiar vem da propria avaliacao local: os desfechos julgados corretos na
-# revisao manual tinham 56% de suporte (estado normal, 28/50), enquanto os
-# julgados de baixa confianca tinham 18% (correia, 9/50, com empate triplo) e
-# 26% (ventoinha, 13/50). 40% fica entre os dois grupos sem separar nenhum caso
-# ao meio.
-SUPORTE_MINIMO = 0.40
-
 
 @dataclass(frozen=True)
 class Confianca:
@@ -46,12 +28,8 @@ class Confianca:
         return bool(self.empatadas)
 
     @property
-    def suporte_baixo(self) -> bool:
-        return self.suporte < SUPORTE_MINIMO
-
-    @property
     def inconclusiva(self) -> bool:
-        return self.houve_empate or self.suporte_baixo
+        return self.houve_empate
 
     def motivo(self, rotular=str) -> str:
         """Frase que explica por que o resultado nao e conclusivo.
@@ -63,18 +41,17 @@ class Confianca:
         if not self.inconclusiva:
             return ""
         if self.houve_empate:
-            nomes = ", ".join(rotular(familia) for familia in self.empatadas)
+            nomes = ", ".join(
+                rotular(familia)
+                for familia in (self.vencedora, *self.empatadas)
+            )
             return (
                 f"Classificação inconclusiva: {len(self.empatadas) + 1} famílias "
                 f"empataram com {self.votos} de {self.total} votos "
-                f"({rotular(self.vencedora)}, {nomes}). O desempate foi pela ordem "
-                "do histórico, não por evidência. Trate como hipótese."
+                f"({nomes}). Nenhuma família foi escolhida; confirme os sintomas "
+                "e colete novas medições. Trate cada candidata apenas como hipótese."
             )
-        return (
-            f"Confiança baixa: a família vencedora reuniu apenas {self.votos} de "
-            f"{self.total} votos. As demais somam a maioria — trate como hipótese "
-            "e confirme pelo rótulo real ou por inspeção."
-        )
+        return ""
 
 
 def avaliar(votos_por_familia: dict[str, int], vizinhos_consultados: int) -> Confianca | None:

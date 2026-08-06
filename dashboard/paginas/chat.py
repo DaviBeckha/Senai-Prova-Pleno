@@ -11,6 +11,7 @@ import streamlit as st
 
 import api
 import estado
+import tempo
 import vocabulario
 
 st.title("Chat de manutenção")
@@ -41,6 +42,8 @@ def _mostrar_resposta(resposta: dict) -> None:
 
     st.caption(f"**{vocabulario.titulo_chat(status)}** — "
                f"{vocabulario.explicacao_chat(status)}")
+    if resposta.get("_tempo_total") is not None:
+        st.caption(f"Tempo total: {resposta['_tempo_total']:.2f}s")
 
     if resposta["familias"]:
         rotulos = " · ".join(familias.rotulo(f) for f in resposta["familias"])
@@ -111,7 +114,9 @@ if pergunta:
     with st.chat_message("assistant"):
         try:
             with st.spinner(f"Consultando… {espera}"):
-                resposta = api.perguntar(pergunta, modo)
+                execucao = tempo.medir(lambda: api.perguntar(pergunta, modo))
+            resposta = execucao.valor
+            resposta["_tempo_total"] = execucao.elapsed_seconds
             estado.registrar_resposta(resposta)
             _mostrar_resposta(resposta)
         except api.ErroDeApi as erro:

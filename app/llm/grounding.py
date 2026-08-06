@@ -14,12 +14,11 @@ conferencias por passo:
 6. negacao presente em apenas um dos lados (acao ou citacao) reprova —
    inverter o sentido da evidencia tambem e alucinacao.
 
-E duas sobre cada item de `unanswered`, que antes atravessava sem nenhuma
-conferencia: ele nao pode afirmar valor de engenharia (nao ha citacao contra
-o que confronta-lo) e precisa de fato declarar ausencia. O campo e renderizado
-sob "### Limitacoes", sem fonte ao lado e na secao que se le como
-meta-informacao do sistema — instrucao contrabandeada ali chega ao operador
-com menos defesa do que num passo.
+O campo `unanswered` e tratado apenas como um sinal de que houve limitacao.
+Como texto livre nao admite uma gramatica completa e segura, seu conteudo
+nunca e interpretado nem renderizado: a interface exibe apenas uma limitacao
+deterministica. Isso tambem evita rejeitar passos validos por causa de uma
+explicacao oculta do modelo.
 
 Qualquer passo reprovado invalida o rascunho INTEIRO — meia resposta
 fundamentada e meia inventada continua sendo uma resposta inventada.
@@ -73,14 +72,10 @@ _NUMERAL_ISOLADO = "|".join(sorted(_NUMERAIS, key=len, reverse=True))
 _EXTENSO_COM_UNIDADE = re.compile(
     rf"\b({_NUMERAL_ISOLADO})(?:\s+e\s+({_NUMERAL_ISOLADO}))?\s+{_UNIDADES}\b"
 )
-_DIGITO_COM_UNIDADE = re.compile(rf"\b\d+(?:[.,]\d+)?\s*{_UNIDADES}\b")
-# Um item de `unanswered` declara o que a evidencia NAO cobre. Sem nenhuma
-# destas marcas, o item nao esta declarando ausencia — esta instruindo.
-_MARCADORES_DE_AUSENCIA = {
-    "nao", "sem", "falta", "faltam", "faltou", "ausente", "ausencia",
-    "nenhum", "nenhuma", "desconhecido", "desconhecida", "indisponivel",
-    "insuficiente", "omite", "silencia",
-}
+_LIMITACAO_DETERMINISTICA = (
+    "Limitação informada pelo modelo: parte da solicitação não possui "
+    "suporte suficiente nas evidências recuperadas."
+)
 
 
 class GroundingValidationError(ValueError):
@@ -118,6 +113,15 @@ def _tokens(value: str) -> set[str]:
         for token in _WORD.findall(_normalize(value))
         if token not in _STOPWORDS
     }
+
+
+def _lexically_supported(action_token: str, quote_tokens: set[str]) -> bool:
+    if action_token in quote_tokens:
+        return True
+    if len(action_token) < 5:
+        return False
+    stem = action_token[:5]
+    return any(len(token) >= 5 and token[:5] == stem for token in quote_tokens)
 
 
 def evidence_items_for(ctx) -> tuple[EvidenceItem, ...]:
@@ -195,8 +199,13 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
             errors.append(f"passo {position}: número sem suporte na citação")
         action_tokens = _tokens(step.action)
         quote_tokens = _tokens(step.quote)
+        supported_tokens = {
+            token
+            for token in action_tokens
+            if _lexically_supported(token, quote_tokens)
+        }
         support_ratio = (
-            len(action_tokens & quote_tokens) / len(action_tokens)
+            len(supported_tokens) / len(action_tokens)
             if action_tokens
             else 0.0
         )
@@ -209,21 +218,6 @@ def validate_grounded_draft(draft: GroundedDraft, ctx) -> tuple[str, ...]:
         # sem reduzir o suporte lexical o suficiente para ser barrada acima.
         if bool(action_tokens & _NEGATION_TOKENS) != bool(quote_tokens & _NEGATION_TOKENS):
             errors.append(f"passo {position}: negação sem suporte na citação")
-    # `unanswered` e renderizado sob "### Limitacoes" (ver
-    # format_grounded_draft), sem citacao e sem fonte ao lado. Um passo
-    # inventado chega a tela com evidencia para o operador conferir; um item
-    # daqui nao chega com nada — e ainda ocupa a secao que se le como
-    # meta-informacao do sistema, nao como instrucao.
-    for position, item in enumerate(draft.unanswered, start=1):
-        normalizado = _normalize(item)
-        if _DIGITO_COM_UNIDADE.search(normalizado) or _EXTENSO_COM_UNIDADE.search(normalizado):
-            errors.append(
-                f"limitação {position}: valor técnico sem evidência que o sustente"
-            )
-        if not _tokens(item) & _MARCADORES_DE_AUSENCIA:
-            errors.append(
-                f"limitação {position}: não declara ausência de evidência"
-            )
     if not draft.steps and not draft.unanswered:
         errors.append("rascunho vazio")
     return tuple(errors)
@@ -245,7 +239,10 @@ def format_grounded_draft(draft: GroundedDraft, ctx) -> str:
             )
     if draft.unanswered:
         lines.append("### Limitações")
-        lines.extend(f"- {item}" for item in draft.unanswered)
+        # `unanswered` vem do modelo sem citação individual. Renderizar o
+        # conteúdo permitiria contrabandear instruções sob uma seção que o
+        # operador interpreta como metainformação segura.
+        lines.append(f"- {_LIMITACAO_DETERMINISTICA}")
     context_limitations = getattr(ctx, "limitations", ())
     if context_limitations:
         if "### Limitações" not in lines:

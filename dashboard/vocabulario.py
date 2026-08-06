@@ -20,6 +20,16 @@ DIAGNOSTICO = {
         "Falha reconhecida, com documento orientativo cadastrado e trechos "
         "recuperados do índice.",
     ),
+    "diagnostico_inconclusivo": (
+        "Diagnóstico inconclusivo",
+        "Duas ou mais famílias empataram no maior número de votos. O sistema "
+        "reteve a recomendação em vez de escolher uma família arbitrariamente.",
+    ),
+    "evidencia_insuficiente": (
+        "Evidência insuficiente",
+        "A família foi reconhecida, mas a resposta gerada não cobriu a ação "
+        "solicitada e foi retida.",
+    ),
     "sem_documento": (
         "Sem documento orientativo",
         "A falha foi reconhecida, mas não há procedimento cadastrado para ela "

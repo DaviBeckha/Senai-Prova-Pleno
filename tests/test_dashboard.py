@@ -146,14 +146,14 @@ def test_empate_no_topo_torna_a_classificacao_inconclusiva():
     assert certeza.inconclusiva
 
 
-def test_suporte_baixo_sem_empate_tambem_e_inconclusivo():
+def test_suporte_baixo_sem_empate_nao_aplica_limiar_arbitrario():
     certeza = confianca.avaliar(VOTOS_SUPORTE_BAIXO, 50)
 
     assert certeza.vencedora == "ventoinha"
     assert not certeza.houve_empate
     assert certeza.suporte == pytest.approx(0.26)
-    assert certeza.suporte_baixo
-    assert certeza.inconclusiva
+    assert not certeza.inconclusiva
+    assert certeza.motivo() == ""
 
 
 def test_maioria_folgada_e_conclusiva():
@@ -171,15 +171,8 @@ def test_motivo_do_empate_nomeia_as_familias_e_pede_cautela():
 
     assert "3 famílias" in texto
     assert "9 de 50" in texto
-    assert "hipótese" in texto
+    assert "nenhuma família foi escolhida" in texto.lower()
     assert "rolamento ball" in texto
-
-
-def test_motivo_de_suporte_baixo_nao_fala_de_empate():
-    texto = confianca.avaliar(VOTOS_SUPORTE_BAIXO, 50).motivo()
-
-    assert "13 de 50" in texto
-    assert "empat" not in texto.lower()
 
 
 def test_suporte_usa_vizinhos_consultados_como_denominador():

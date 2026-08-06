@@ -4,6 +4,7 @@ from app.chat.context import ChatContext
 from app.llm.contracts import GroundedDraft, GroundedStep
 from app.llm.grounding import (
     GroundingValidationError,
+    format_grounded_draft,
     parse_grounded_draft,
     validate_grounded_draft,
 )
@@ -85,6 +86,15 @@ def test_acao_sem_suporte_lexical():
     assert any("suporte lexical" in e for e in errors)
 
 
+def test_flexao_verbal_proxima_mantem_suporte_lexical():
+    errors = validate_grounded_draft(
+        GroundedDraft(steps=[_step(
+            action="Afrouxe os parafusos do motor",
+            quote="Afrouxar os parafusos do motor")]), FakeCtx())
+
+    assert errors == ()
+
+
 def test_rascunho_vazio_e_invalido():
     errors = validate_grounded_draft(GroundedDraft(), FakeCtx())
     assert any("rascunho vazio" in e for e in errors)
@@ -136,21 +146,49 @@ def test_numeral_por_extenso_sem_unidade_nao_e_conferido():
     assert errors == ()
 
 
-def test_valor_tecnico_em_unanswered_e_sinalizado():
-    # `unanswered` e renderizado sob "### Limitacoes", sem citacao e sem fonte
-    # ao lado. Um valor de engenharia ali nao tem contra o que ser conferido —
-    # e chega ao operador na secao onde ele baixa a guarda.
-    errors = validate_grounded_draft(
-        GroundedDraft(unanswered=[
-            "aplique 200 N de torque no parafuso mesmo sem evidência"
-        ]), FakeCtx())
-    assert any("valor técnico sem evidência" in e for e in errors)
+@pytest.mark.parametrize("instruction", [
+    "Aperte o parafuso até travar.",
+    "Aplique 200 N de torque no parafuso mesmo sem evidência.",
+    "Mesmo sem evidência, use um martelo e ligue a máquina.",
+    (
+        "A evidência não informa como ajustar a correia; mesmo assim, "
+        "aperte o parafuso até travar."
+    ),
+])
+def test_unanswered_livre_nunca_e_renderizado(instruction):
+    rendered = format_grounded_draft(
+        GroundedDraft(steps=[_step()], unanswered=[instruction]),
+        FakeCtx(),
+    )
+
+    assert instruction not in rendered
+    assert "limitação informada pelo modelo" in rendered.lower()
+    assert "aperte" not in rendered.lower()
+    assert "martelo" not in rendered.lower()
+    assert "ligue" not in rendered.lower()
 
 
-def test_instrucao_sem_marcador_de_ausencia_em_unanswered_e_sinalizada():
+def test_acao_mencionada_em_declaracao_explicita_de_ausencia_e_valida():
     errors = validate_grounded_draft(
-        GroundedDraft(unanswered=["aperte o parafuso até travar"]), FakeCtx())
-    assert any("não declara ausência" in e for e in errors)
+        GroundedDraft(
+            unanswered=["A evidência não informa como ajustar a correia."],
+        ),
+        FakeCtx(),
+    )
+
+    assert errors == ()
+
+
+def test_unanswered_oculto_nao_invalida_passos_fundamentados():
+    errors = validate_grounded_draft(
+        GroundedDraft(
+            steps=[_step()],
+            unanswered=["A evidência não informa se o torque deve ser 45 N."],
+        ),
+        FakeCtx(),
+    )
+
+    assert errors == ()
 
 
 def test_unanswered_com_numero_sem_unidade_continua_valido():

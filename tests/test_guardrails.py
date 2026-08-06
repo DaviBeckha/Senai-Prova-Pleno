@@ -24,3 +24,22 @@ def test_falha_sem_documento():
 def test_desconhecido_e_tratado_como_sem_documento():
     d = decide(_res("desconhecido", "desconhecido"), has_document=lambda f: True)
     assert d.outcome == "nao_documentado"
+
+
+def test_empate_do_knn_retorna_inconclusivo_antes_do_documento():
+    result = SimilarityResult(
+        "correia",
+        "falha",
+        [1, 2],
+        {"correia": 1, "rolamento_ball": 1},
+        candidate_families=("correia", "rolamento_ball"),
+        top_vote_share=0.5,
+        vote_margin=0,
+        is_ambiguous=True,
+    )
+
+    decision = decide(result, has_document=lambda family: True)
+
+    assert decision.outcome == "inconclusivo"
+    assert decision.family is None
+    assert decision.candidate_families == ("correia", "rolamento_ball")

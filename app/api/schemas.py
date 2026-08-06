@@ -60,6 +60,12 @@ def status_chat_pt(status: str) -> str:
     return _STATUS_CHAT_PT.get(status, status)
 
 
+def status_diagnostico_pt(status: str) -> str:
+    if status == "insufficient_evidence":
+        return "evidencia_insuficiente"
+    return status
+
+
 class JanelaOcorrencias(BaseModel):
     """Periodo coberto pelo historico da familia diagnosticada.
 
@@ -73,7 +79,7 @@ class JanelaOcorrencias(BaseModel):
 
 class DiagnosticoOut(BaseModel):
     status: str
-    familia: str
+    familia: str | None
     rotulo: str
     mensagem: str
     total_ocorrencias: int
@@ -95,13 +101,20 @@ class DiagnosticoOut(BaseModel):
     # conclusivo.
     votos_por_familia: dict[str, int]
     vizinhos_consultados: int
+    familias_candidatas: list[str]
+    participacao_maior_voto: float
+    margem_votos: int
 
     @classmethod
     def de_relatorio(cls, report) -> "DiagnosticoOut":
         return cls(
-            status=report.status,
+            status=status_diagnostico_pt(report.status),
             familia=report.family,
-            rotulo=display_label(report.family),
+            rotulo=(
+                display_label(report.family)
+                if report.family is not None
+                else "Diagnóstico inconclusivo"
+            ),
             mensagem=report.message,
             total_ocorrencias=report.total_ocorrencias,
             frequencia_por_dia=report.freq_per_day,
@@ -116,6 +129,9 @@ class DiagnosticoOut(BaseModel):
             erros_de_validacao=list(report.validation_errors),
             votos_por_familia=report.family_votes,
             vizinhos_consultados=report.neighbor_count,
+            familias_candidatas=list(report.candidate_families),
+            participacao_maior_voto=report.top_vote_share,
+            margem_votos=report.vote_margin,
         )
 
 

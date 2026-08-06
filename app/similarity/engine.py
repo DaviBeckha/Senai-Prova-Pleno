@@ -16,6 +16,10 @@ class SimilarityResult:
     dominant_kind: str
     neighbor_ids: list[int]
     family_votes: dict[str, int]
+    candidate_families: tuple[str, ...] = ()
+    top_vote_share: float = 0.0
+    vote_margin: int = 0
+    is_ambiguous: bool = False
 
 
 class SimilarityEngine:
@@ -62,11 +66,22 @@ class SimilarityEngine:
         _, idx = self._nn.kneighbors(vec, n_neighbors=min(k, len(self._meta)))
         rows = self._meta.iloc[idx[0]]
         votes = Counter(rows["family"])
-        dominant_family, _ = votes.most_common(1)[0]
+        ranked_votes = sorted(votes.items(), key=lambda item: (-item[1], item[0]))
+        dominant_family, top_votes = ranked_votes[0]
+        second_votes = ranked_votes[1][1] if len(ranked_votes) > 1 else 0
+        candidate_families = tuple(
+            family
+            for family, count in ranked_votes
+            if count == top_votes
+        )
         dominant_kind = rows[rows["family"] == dominant_family]["kind"].iloc[0]
         return SimilarityResult(
             dominant_family=dominant_family,
             dominant_kind=dominant_kind,
             neighbor_ids=[int(i) for i in rows["id"]],
             family_votes=dict(votes),
+            candidate_families=candidate_families,
+            top_vote_share=top_votes / len(rows),
+            vote_margin=top_votes - second_votes,
+            is_ambiguous=len(candidate_families) > 1,
         )

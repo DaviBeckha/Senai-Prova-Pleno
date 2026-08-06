@@ -103,6 +103,7 @@ def test_eventos_contrato_em_portugues_sem_campos_em_ingles():
         "status", "familia", "rotulo", "mensagem", "total_ocorrencias",
         "frequencia_por_dia", "ocorrencias", "fontes", "redator", "degradado",
         "erros_de_validacao", "votos_por_familia", "vizinhos_consultados",
+        "familias_candidatas", "participacao_maior_voto", "margem_votos",
     }
 
 
@@ -321,6 +322,59 @@ def test_eventos_persiste_event_e_diagnosis():
     assert diagnoses[0].event_id == events[0].id
     assert diagnoses[0].status == "diagnostico"
     assert diagnoses[0].family == "correia"
+
+
+class InconclusivePipeline(FakePipeline):
+    def diagnose(self, event, mode=None):
+        return DiagnosisReport(
+            status="diagnostico_inconclusivo",
+            family=None,
+            message="Empate entre correia e rolamento_ball.",
+            total_ocorrencias=0,
+            freq_per_day=0.0,
+            sources=[],
+            renderer=None,
+            degraded=False,
+            family_votes={"correia": 5, "rolamento_ball": 5},
+            neighbor_count=10,
+            candidate_families=["correia", "rolamento_ball"],
+            top_vote_share=0.5,
+            vote_margin=0,
+        )
+
+
+def test_eventos_expoe_e_persiste_diagnostico_inconclusivo():
+    factory = _session_factory_memoria()
+    app = create_app(skip_bootstrap=True)
+    state = AppState(
+        pipeline=InconclusivePipeline(),
+        registry=None,
+        index=None,
+        df=None,
+        session_factory=factory,
+    )
+    app.dependency_overrides[get_state] = lambda: state
+    client = TestClient(app)
+
+    response = client.post(
+        "/eventos",
+        json={column: 0.1 for column in FEATURE_COLUMNS},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "diagnostico_inconclusivo"
+    assert body["familia"] is None
+    assert body["rotulo"] == "Diagnóstico inconclusivo"
+    assert body["familias_candidatas"] == ["correia", "rolamento_ball"]
+    assert body["participacao_maior_voto"] == 0.5
+    assert body["margem_votos"] == 0
+    with factory() as session:
+        event = session.scalar(select(Event))
+        diagnosis = session.scalar(select(Diagnosis))
+    assert event.family == "inconclusivo"
+    assert event.kind == "indeterminado"
+    assert diagnosis.family == "inconclusivo"
 
 
 def test_eventos_sem_session_factory_nao_persiste():

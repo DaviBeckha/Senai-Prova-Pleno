@@ -78,6 +78,14 @@ def _session_factory_arquivo(db_path: Path):
     return factory, engine
 
 
+def _state_override(state: AppState):
+    """Cria uma dependency override sem parametros para o FastAPI."""
+    def current_state() -> AppState:
+        return state
+
+    return current_state
+
+
 def test_reinicio_preserva_documentos_cadastrados_e_reindexados(tmp_path, monkeypatch):
     # Cenario: usuario cadastra um documento novo (familia "ventoinha", sem
     # PDF_MAP/seed) via /documentos; o processo reinicia (deploy, restart de
@@ -98,7 +106,7 @@ def test_reinicio_preserva_documentos_cadastrados_e_reindexados(tmp_path, monkey
         app1 = create_app(skip_bootstrap=True)
         state1 = AppState(pipeline=None, registry=registry1, index=index1, df=None,
                           session_factory=factory1)
-        app1.dependency_overrides[get_state] = lambda: state1
+        app1.dependency_overrides[get_state] = _state_override(state1)
         client1 = TestClient(app1)
 
         r = client1.post(
@@ -175,7 +183,7 @@ def test_reidratacao_e_o_que_popula_o_indice_apos_reinicio(tmp_path, monkeypatch
         app1 = create_app(skip_bootstrap=True)
         state1 = AppState(pipeline=None, registry=registry1, index=index1, df=None,
                           session_factory=factory1)
-        app1.dependency_overrides[get_state] = lambda: state1
+        app1.dependency_overrides[get_state] = _state_override(state1)
         client1 = TestClient(app1)
 
         r = client1.post(

@@ -69,13 +69,20 @@ def _load_event(filename: str) -> dict:
     return data
 
 
-def test_evento_correia_valida_e_gera_diagnostico(real_pipeline):
+def test_evento_correia_valida_e_retem_diagnostico_empatado(real_pipeline):
     event = _load_event("evento_correia.json")
     rep = real_pipeline.diagnose(event)
-    assert rep.status == "diagnostico"
-    assert rep.family == "correia"
-    assert rep.sources == ["Doc4.pdf"]
-    assert rep.renderer is not None
+    assert rep.status == "diagnostico_inconclusivo"
+    assert rep.family is None
+    assert rep.candidate_families == [
+        "correia",
+        "rolamento_ball",
+        "rolamento_outer",
+    ]
+    assert rep.top_vote_share == pytest.approx(9 / 50)
+    assert rep.vote_margin == 0
+    assert rep.sources == []
+    assert rep.renderer is None
 
 
 def test_evento_ventoinha_valida_e_fica_sem_documento(real_pipeline):

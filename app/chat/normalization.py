@@ -1,8 +1,6 @@
 import re
-import unicodedata
 
-_NON_WORD = re.compile(r"[^a-z0-9_]+")
-_WHITESPACE = re.compile(r"\s+")
+from app.core.text import normalize_text
 # Negacao ANTEPOSTA, ancorada no fim da janela: so vale se o marcador estiver
 # colado ao termo ("nao e correia"), nunca solto no inicio da frase.
 _NEGATION = re.compile(r"(?:\bnao\s+e(?:\s+a|\s+o)?|\bnao|\bdescartad[ao])\s*$")
@@ -12,13 +10,6 @@ _DISMISSAL = re.compile(r"descartad[ao]|eliminad[ao]|excluid[ao]")
 # "correia descartada" e "correia foi descartada" sem atravessar a familia
 # seguinte em "correia e polia descartada".
 _DISMISSAL_WINDOW = 2
-
-
-def normalize_text(value: str) -> str:
-    decomposed = unicodedata.normalize("NFKD", value.casefold())
-    without_marks = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    without_punctuation = _NON_WORD.sub(" ", without_marks.replace("-", " "))
-    return _WHITESPACE.sub(" ", without_punctuation).strip()
 
 
 def find_phrase_spans(
