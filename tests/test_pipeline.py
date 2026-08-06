@@ -109,6 +109,26 @@ def test_falha_documentada_gera_diagnostico():
     assert rep.sources == ["Doc4.pdf"]
     assert "correia" in rep.family_votes
     assert rep.family_votes["correia"] == 20
+    assert rep.neighbor_count == 20
+    assert sum(rep.family_votes.values()) == rep.neighbor_count
+
+
+def test_diagnose_neighbor_count_bate_com_vizinhos_consultados_pela_engine():
+    # neighbor_count e uma grandeza DIFERENTE de total_ocorrencias: o kNN
+    # consulta k=50 vizinhos (clampado ao tamanho do historico — aqui 20,
+    # via helper _df), mas total_ocorrencias e o total historico da familia
+    # vencedora (via occurrence_stats). Este teste prova que neighbor_count
+    # reflete exatamente o que a SimilarityEngine consultou, nao o historico.
+    df = _df("correia", "falha")
+    eng = SimilarityEngine()
+    eng.fit(df)
+    result = eng.query(_event())
+
+    rep = _pipeline(df).diagnose(_event())
+
+    assert rep.neighbor_count == len(result.neighbor_ids)
+    assert rep.neighbor_count == 20
+    assert sum(rep.family_votes.values()) == rep.neighbor_count
 
 
 def test_falha_sem_documento_nao_chama_llm():
@@ -122,6 +142,8 @@ def test_falha_sem_documento_nao_chama_llm():
     assert "Registre um novo documento" in rep.message
     assert rep.renderer is None
     assert "ventoinha" in rep.family_votes
+    assert rep.neighbor_count == 20
+    assert sum(rep.family_votes.values()) == rep.neighbor_count
 
 
 def test_estado_retorna_sem_diagnostico():
@@ -132,6 +154,8 @@ def test_estado_retorna_sem_diagnostico():
     ).diagnose(_event())
     assert rep.status == "estado"
     assert "normal" in rep.family_votes
+    assert rep.neighbor_count == 20
+    assert sum(rep.family_votes.values()) == rep.neighbor_count
 
 
 def test_falha_documentada_sem_trechos_retorna_sem_documento_sem_chamar_llm():
@@ -151,6 +175,8 @@ def test_falha_documentada_sem_trechos_retorna_sem_documento_sem_chamar_llm():
     assert rep.degraded is False
     assert rep.total_ocorrencias == 20
     assert "correia" in rep.family_votes
+    assert rep.neighbor_count == 20
+    assert sum(rep.family_votes.values()) == rep.neighbor_count
 
 
 def test_chat_familia_documentada_gera_diagnostico():

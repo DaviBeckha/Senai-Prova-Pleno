@@ -22,6 +22,11 @@ class DiagnosisOut(BaseModel):
     renderer: str | None
     degraded: bool
     family_votes: dict[str, int]
+    # Quantos vizinhos a query kNN desta requisicao de fato consultou (k=50
+    # clampado ao tamanho do historico) — distinto de total_ocorrencias, que
+    # e o total historico da familia vencedora. Ver DiagnosisReport.neighbor_count
+    # em app/pipeline.py.
+    neighbor_count: int
 
 
 class ChatIn(BaseModel):
