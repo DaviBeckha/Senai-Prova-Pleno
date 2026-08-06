@@ -203,32 +203,38 @@ def test_pergunta_de_historico_retorna_numeros_do_occurrence_stats():
 # Seguranca: intervencao com a maquina em funcionamento
 # ---------------------------------------------------------------------------
 
-# Os 9 verbos reconhecidos por _INTERVENTION (app/guardrails/safety.py), na
-# mesma ordem em que aparecem na regex. Cada um precisa recusar quando a
+# Os 10 verbos reconhecidos por _INTERVENTION (app/guardrails/safety.py), na
+# mesma ordem em que aparecem na regex. Cada um precisa orientar quando a
 # pergunta tambem cita a maquina em funcionamento — sem isso a cobertura do
 # guardrail fica dependente de qual verbo o operador escolheu escrever.
 _VERBOS_DE_INTERVENCAO = (
     "ajustar", "apertar", "remover", "instalar",
-    "substituir", "abrir", "desmontar", "corrigir", "trocar",
+    "substituir", "mexer", "abrir", "desmontar", "corrigir", "trocar",
 )
 
 
+def _assert_live_safety_guidance(report):
+    assert report.status == "answered"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "Não realize a intervenção" in report.message
+    assert "EPIs" in report.message
+    assert "desligue completamente" in report.message
+    assert "bloqueio" in report.message
+    assert "ajustar a tensao da correia" not in report.message
+
+
 @pytest.mark.parametrize("verbo", _VERBOS_DE_INTERVENCAO)
-def test_intervencao_com_motor_ligado_e_recusada_para_cada_verbo(verbo):
-    # Fixa o marcador ("motor ligado") e varia o verbo: prova que a recusa
+def test_intervencao_com_motor_ligado_e_orientada_para_cada_verbo(verbo):
+    # Fixa o marcador ("motor ligado") e varia o verbo: prova que a orientacao
     # nao depende de qual verbo de intervencao fisica o operador usou —
-    # todos os 9 reconhecidos por _INTERVENTION disparam a mesma recusa
+    # todos os 10 reconhecidos por _INTERVENTION disparam a mesma orientacao
     # antes de qualquer busca ou geracao.
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
     rep = pipeline.answer_question(f"posso {verbo} a correia com o motor ligado?")
 
-    assert rep.status == "refused_unsafe"
-    assert rep.message == (
-        "Não execute ajuste ou intervenção com o equipamento em "
-        "funcionamento. Interrompa a atividade e siga o procedimento "
-        "de segurança e autorização vigente da empresa."
-    )
+    _assert_live_safety_guidance(rep)
 
 
 # Os outros 5 marcadores reconhecidos por _RUNNING alem de "motor ligado"
@@ -249,17 +255,12 @@ _OUTROS_MARCADORES_DE_MAQUINA_OPERANDO = (
     [pergunta for _, pergunta in _OUTROS_MARCADORES_DE_MAQUINA_OPERANDO],
     ids=[marcador for marcador, _ in _OUTROS_MARCADORES_DE_MAQUINA_OPERANDO],
 )
-def test_intervencao_e_recusada_para_cada_marcador_de_maquina_operando(pergunta):
+def test_intervencao_e_orientada_para_cada_marcador_de_maquina_operando(pergunta):
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
     rep = pipeline.answer_question(pergunta)
 
-    assert rep.status == "refused_unsafe"
-    assert rep.message == (
-        "Não execute ajuste ou intervenção com o equipamento em "
-        "funcionamento. Interrompa a atividade e siga o procedimento "
-        "de segurança e autorização vigente da empresa."
-    )
+    _assert_live_safety_guidance(rep)
 
 
 def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
@@ -286,6 +287,9 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     assert rep.status == "answered"
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
+    assert rep.message.startswith("Antes de qualquer intervenção")
+    assert "EPIs" in rep.message
+    assert "desligue completamente" in rep.message
     assert "substituir a correia e instalar uma nova" in rep.message
     # Segunda regra de safety.py (safety_evidence_limitation, usada em
     # app/pipeline.py): os trechos do fake nao tem vocabulario de seguranca
@@ -303,23 +307,19 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
 _FORMAS_CONJUGADAS_DE_INTERVENCAO = (
     "troque a correia com o motor ligado?",
     "ajuste a correia com a máquina ligada",
+    "mexa na correia com o motor ligado",
     "posso trocar a correia com o motor girando?",
     "instalando a peça com o equipamento ligado",
 )
 
 
 @pytest.mark.parametrize("pergunta", _FORMAS_CONJUGADAS_DE_INTERVENCAO)
-def test_intervencao_e_recusada_para_formas_conjugadas_dos_verbos(pergunta):
+def test_intervencao_e_orientada_para_formas_conjugadas_dos_verbos(pergunta):
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
     rep = pipeline.answer_question(pergunta)
 
-    assert rep.status == "refused_unsafe"
-    assert rep.message == (
-        "Não execute ajuste ou intervenção com o equipamento em "
-        "funcionamento. Interrompa a atividade e siga o procedimento "
-        "de segurança e autorização vigente da empresa."
-    )
+    _assert_live_safety_guidance(rep)
 
 
 def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida_normalmente():
@@ -337,6 +337,7 @@ def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida
     assert rep.status == "answered"
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
+    assert "Antes de qualquer intervenção" not in rep.message
 
 
 # ---------------------------------------------------------------------------

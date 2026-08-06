@@ -363,7 +363,10 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Quantas ocorrencias de correia existem no historico?"
     )
 
-    assert unsafe.status == "refused_unsafe"
+    assert unsafe.status == "answered"
+    assert unsafe.sources == ()
+    assert "Não realize a intervenção" in unsafe.message
+    assert "desligue completamente" in unsafe.message
     assert history.status == "answered"
     assert "2 ocorrências" in history.message
 

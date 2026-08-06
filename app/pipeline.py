@@ -225,9 +225,9 @@ class PrescriptivePipeline:
         analysis = analyze_question(pergunta)
 
         # Politicas de pedido e de risco fisico vem ANTES do despacho por
-        # intencao: um pedido para revelar o prompt ou para intervir com a
-        # maquina ligada precisa ser recusado independentemente da familia
-        # reconhecida — inclusive quando nenhuma foi.
+        # intencao: pedidos internos continuam recusados; uma intervencao com
+        # a maquina ligada recebe orientacao deterministica e termina antes de
+        # RAG/LLM, independentemente da familia reconhecida.
         request_policy = inspect_request(pergunta)
         if request_policy.outcome is RequestOutcome.REFUSE_INTERNAL:
             return ChatReport(
@@ -242,9 +242,9 @@ class PrescriptivePipeline:
                 families=analysis.explicit_families,
             )
         safety = assess_question_safety(pergunta)
-        if safety.outcome is SafetyOutcome.REFUSE_LIVE_INTERVENTION:
+        if safety.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION:
             return ChatReport(
-                status="refused_unsafe",
+                status="answered",
                 message=safety.message,
                 families=analysis.explicit_families,
             )
@@ -357,9 +357,12 @@ class PrescriptivePipeline:
             safety_only=analysis.safety_only,
         )
         outcome = self._pick_router(mode).render(context)
+        message = outcome.text
+        if safety.outcome is SafetyOutcome.ADVISE_INTERVENTION:
+            message = f"{safety.message}\n\n{message}"
         return ChatReport(
             status=outcome.answer_status,
-            message=outcome.text,
+            message=message,
             families=analysis.explicit_families,
             sources=tuple(sorted({item.chunk.source for item in bundle.items})),
             renderer=outcome.renderer,

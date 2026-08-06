@@ -1,13 +1,17 @@
 """Contencao de risco fisico, avaliada antes de RAG e LLM.
 
-Duas regras distintas:
+Três regras distintas:
 
-1. `assess_question_safety` recusa intervencao com equipamento em
-   funcionamento. E conservadora de proposito — exige verbo de intervencao E
-   marcador de maquina operando —, para nao confundir observacao dinamica
-   ("que ruido devo ouvir com o motor operando?") com ordem de servico.
+1. `assess_question_safety` orienta toda intervencao fisica com uma mensagem
+   deterministica sobre EPI, parada completa, bloqueio e ausencia de energia.
 
-2. `safety_evidence_limitation` nao recusa: declara. Se a pergunta pede
+2. Se o equipamento esta em funcionamento, a orientacao encerra o fluxo antes
+   de RAG e LLM sem fornecer passos executaveis nessas condicoes. A regra exige
+   verbo de intervencao E marcador de maquina operando para nao confundir
+   observacao dinamica com ordem de servico.
+
+3. `safety_evidence_limitation` declara quando uma pergunta de intervencao
+   nao recupera evidencia documental de seguranca. Se a pergunta pede
    intervencao e nenhum trecho recuperado fala de desligamento, bloqueio ou
    seguranca, a resposta sai avisando que nao autoriza execucao. Uma resposta
    tecnicamente correta e perigosa se o operador a ler como liberacao.
@@ -23,13 +27,28 @@ from app.rag.search import RetrievalBundle
 
 class SafetyOutcome(StrEnum):
     ALLOW = "allow"
-    REFUSE_LIVE_INTERVENTION = "refuse_live_intervention"
+    ADVISE_INTERVENTION = "advise_intervention"
+    ADVISE_LIVE_INTERVENTION = "advise_live_intervention"
 
 
 @dataclass(frozen=True)
 class SafetyDecision:
     outcome: SafetyOutcome
     message: str = ""
+
+
+SAFETY_ADVISORY = (
+    "Antes de qualquer intervenção, verifique os EPIs e demais equipamentos "
+    "de segurança exigidos pelo procedimento da empresa e confirme que estão "
+    "em condições de uso. Para ajustar, remover, instalar ou substituir peças, "
+    "desligue completamente o equipamento, aguarde a parada total, aplique "
+    "bloqueio e etiquetagem das fontes de energia e confirme a ausência de "
+    "energia. Siga o procedimento e a autorização de segurança vigentes."
+)
+LIVE_INTERVENTION_GUIDANCE = (
+    "Não realize a intervenção enquanto o equipamento estiver ligado ou em "
+    "movimento.\n\n" + SAFETY_ADVISORY
+)
 
 
 _INTERVENTION = re.compile(
@@ -39,6 +58,7 @@ _INTERVENTION = re.compile(
     # "abracadeira"), que aparece no vocabulario de correias/polias.
     # "trocar" tem o mesmo desvio ortografico de "corrigir": a forma
     # imperativo/subjuntivo troca c por qu antes de e ("troque", "troquem").
+    r"mex(?:er|a|am|endo|eu|e|em|o|ia|iam)\b|"
     r"abr(?:ir|a|am|indo|iu)\b|desmont\w*|corrij\w*|corrig\w*|troc\w*|troqu\w*)\b"
 )
 _RUNNING = re.compile(
@@ -52,16 +72,14 @@ _SAFETY_EVIDENCE = re.compile(
 
 def assess_question_safety(question: str) -> SafetyDecision:
     normalized = normalize_text(question)
-    if _INTERVENTION.search(normalized) and _RUNNING.search(normalized):
+    if not _INTERVENTION.search(normalized):
+        return SafetyDecision(SafetyOutcome.ALLOW)
+    if _RUNNING.search(normalized):
         return SafetyDecision(
-            SafetyOutcome.REFUSE_LIVE_INTERVENTION,
-            (
-                "Não execute ajuste ou intervenção com o equipamento em "
-                "funcionamento. Interrompa a atividade e siga o procedimento "
-                "de segurança e autorização vigente da empresa."
-            ),
+            SafetyOutcome.ADVISE_LIVE_INTERVENTION,
+            LIVE_INTERVENTION_GUIDANCE,
         )
-    return SafetyDecision(SafetyOutcome.ALLOW)
+    return SafetyDecision(SafetyOutcome.ADVISE_INTERVENTION, SAFETY_ADVISORY)
 
 
 def safety_evidence_limitation(
