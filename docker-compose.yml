@@ -34,9 +34,13 @@ services:
 
   api:
     build: {context: ., dockerfile: Dockerfile.api}
+    # Mantem host.docker.internal disponivel tambem no Docker Engine Linux.
+    # No Docker Desktop o nome ja existe; esta entrada permanece compativel.
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
     environment:
-      # Banco instalado na maquina host. No Docker Desktop, use
-      # host.docker.internal no lugar de localhost na URL do .env.
+      # PostgreSQL e deliberadamente externo ao stack. O banco e o usuario
+      # precisam existir; o Alembic cria e atualiza somente as tabelas.
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL precisa estar definida no .env}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}

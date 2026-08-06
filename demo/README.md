@@ -11,7 +11,7 @@ padrão e o roteador de laudos) — cada um produz sempre o mesmo resultado, tra
 
 | Arquivo | Linha de origem (`id` do dataset) | `fault` original | Família normalizada | Resultado esperado em `POST /eventos` |
 |---|---|---|---|---|
-| `evento_correia.json` | `id=102543` | `correia` | `correia` (tem documento — `Doc4.pdf`) | `status: "diagnostico"` |
+| `evento_correia.json` | `id=102543` | `correia` | empate entre `correia`, `rolamento_ball` e `rolamento_outer` (9/50 cada) | `status: "diagnostico_inconclusivo"` |
 | `evento_ventoinha.json` | `id=122940` | `ventoinha_2` | `ventoinha` (sem documento cadastrado) | `status: "sem_documento"` |
 | `evento_normal.json` | `id=1782` | `normal` | `normal` (estado, não é falha) | `status: "estado"` |
 
@@ -55,7 +55,10 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8000/eventos `
   -ContentType "application/json" -Body $body
 ```
 
-Resultado esperado: `status: "diagnostico"`, `family: "correia"`, `sources: ["Doc4.pdf"]`.
+Resultado esperado: `status: "diagnostico_inconclusivo"`, `family: null`, candidatas
+`correia`, `rolamento_ball` e `rolamento_outer`, sem fontes e sem chamada ao modelo. O
+documento de correia existe, mas o pipeline retém o diagnóstico antes do RAG porque o kNN
+empatou no topo.
 
 ### Passo 2 — falha sem documento (`ventoinha`)
 
