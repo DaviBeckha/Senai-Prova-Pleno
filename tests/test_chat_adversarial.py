@@ -14,6 +14,8 @@ import pytest
 
 from app.chat.analyzer import analyze_question
 from app.chat.types import ChatIntent
+from app.core.maintenance_intent import ContentRole
+from app.core.text import normalize_text
 from app.data.loader import FEATURE_COLUMNS
 from app.llm.base import GROUNDED_JSON_CONTRACT
 from app.llm.router import Router
@@ -33,6 +35,10 @@ class FakeIndex:
     def search(self, query, doc_family, k=4, min_score=0.0):
         chunk = self._chunks_by_family.get(doc_family)
         return [SearchHit(chunk, 0.9)] if chunk is not None else []
+
+    def chunks_for_family(self, doc_family):
+        chunk = self._chunks_by_family.get(doc_family)
+        return (chunk,) if chunk is not None else ()
 
 
 class FakeRegistry:
@@ -211,6 +217,14 @@ _VERBOS_DE_INTERVENCAO = (
     "ajustar", "apertar", "remover", "instalar",
     "substituir", "mexer", "abrir", "desmontar", "corrigir", "trocar",
     "alinhar", "lubrificar", "reapertar", "reparar",
+)
+SAFETY_CHUNK = Chunk(
+    "correia",
+    "Doc4.pdf",
+    "1. Segurança",
+    "Desligar, bloquear e confirmar ausência de energia antes da intervenção.",
+    ("1. Segurança",),
+    ContentRole.SAFETY,
 )
 
 
@@ -483,6 +497,69 @@ def test_verificacoes_de_seguranca_com_inspecao_explicita_preservam_inspecao():
     assert analysis.requires_safety is True
     assert analysis.safety_only is False
     assert analysis.requested_actions == ("inspect",)
+
+
+def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only():
+    analysis = analyze_question(
+        "Quais medidas de segurança são necessárias e como trocar a correia?"
+    )
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is False
+    assert analysis.requested_actions == ("replace",)
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Quais medidas de segurança constam no procedimento da correia?",
+        "Quais medidas de segurança são necessárias para a troca da correia?",
+    ),
+)
+def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(
+    question,
+):
+    analysis = analyze_question(question)
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is True
+
+    report = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": SAFETY_CHUNK},
+    ).answer_question(question)
+    answer = normalize_text(report.message)
+
+    assert report.status == "answered"
+    assert "desligar" in answer
+    assert "ajustar a tensao" not in answer
+    assert "remover a correia antiga" not in answer
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que significa o ajuste da correia?",
+        "O que significa alinhamento da polia com o motor ligado?",
+        "Explique o alinhamento da polia.",
+        "Para que serve o ajuste da correia?",
+        "Qual a diferença entre ajuste e alinhamento da polia?",
+    ),
+)
+def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
+    analysis = analyze_question(question)
+
+    assert analysis.requested_actions == ()
+
+    report = _pipeline(
+        _df(["correia", "polia"]),
+        {"correia", "polia"},
+        {"correia": CORREIA_CHUNK, "polia": POLIA_CHUNK},
+    ).answer_question(question)
+
+    assert "Antes de qualquer intervenção" not in report.message
+    assert "Não realize a intervenção" not in report.message
 
 
 @pytest.mark.parametrize("verb", ("remover", "instalar"))

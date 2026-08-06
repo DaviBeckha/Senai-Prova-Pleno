@@ -18,6 +18,10 @@ from app.guardrails.safety import SafetyOutcome, assess_question_safety
     "Qual o procedimento da correia com o motor ligado?",
     "Como consertar a correia com o motor ligado?",
     "Como relubrificar o rolamento com o motor ligado?",
+    "Mexi na correia com o motor ligado; o que faço?",
+    "A equipe abre a proteção da correia com o motor ligado?",
+    "Abrimos a proteção da correia com o motor ligado; e agora?",
+    "A proteção foi aberta com o motor ligado.",
 ))
 def test_variacoes_de_mexer_com_maquina_ligada_geram_orientacao(question):
     decision = assess_question_safety(question)

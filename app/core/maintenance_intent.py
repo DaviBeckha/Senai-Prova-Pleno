@@ -90,8 +90,18 @@ _ACTION_PATTERNS = (
 # categoria de evidencia para reranking. Mantê-las separadas evita transformar
 # "verificacoes de seguranca antes de mexer" em pedido de reparo no analisador.
 _GENERIC_PHYSICAL_INTERVENTION = re.compile(
-    r"\b(?:mex(?:er|a|am|endo|eu|e|em|o|emos|eram|ia|iam)|"
-    r"abr(?:ir|a|am|indo|iu)|desmont\w*)\b"
+    r"\b(?:mex(?:er|a|am|endo|eu|e|em|o|i|emos|eram|ia|iam|id[oa]s?)|"
+    r"abr(?:ir|a|am|e|em|o|imos|iram|ia|iam|indo|iu)|abert[oa]s?|"
+    r"desmont\w*)\b"
+)
+
+_EXPLANATION_REQUEST = re.compile(
+    r"\b(?:o que significa|o que (?:e|sao)|qual (?:e )?a definicao|"
+    r"qual (?:e )?a diferenca|para que serve|explique|defina|conceitue)\b"
+)
+_ADDITIONAL_ACTION_CLAUSE = re.compile(
+    r"\b(?:e|tambem)\s+(?P<clause>"
+    r"(?:como|posso|devo|preciso|quero|vou|precisamos)\b.*)$"
 )
 
 _CONDITION_PATTERNS = {
@@ -113,6 +123,11 @@ _SAFETY_ONLY_REQUEST = re.compile(
 
 def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
     normalized = normalize_text(value)
+    if _EXPLANATION_REQUEST.search(normalized):
+        additional = _ADDITIONAL_ACTION_CLAUSE.search(normalized)
+        if additional is None:
+            return ()
+        normalized = additional.group("clause")
     # "verificações de segurança" descreve o tema da pergunta, não uma
     # inspeção de manutenção. Removemos somente essa expressão para ainda
     # preservar ações explícitas adicionais, como "inspecionar a correia".
@@ -150,10 +165,20 @@ def is_safety_request(value: str) -> bool:
 
 def is_safety_only_request(value: str) -> bool:
     normalized = normalize_text(value)
+    additional = _ADDITIONAL_ACTION_CLAUSE.search(normalized)
+    has_additional_action = bool(
+        additional
+        and (
+            detect_actions(additional.group("clause"))
+            or _GENERIC_PHYSICAL_INTERVENTION.search(
+                additional.group("clause")
+            )
+        )
+    )
     return bool(
         _SAFETY_REQUEST.search(normalized)
         and _SAFETY_ONLY_REQUEST.search(normalized)
-        and not detect_actions(normalized)
+        and not has_additional_action
     )
 
 
