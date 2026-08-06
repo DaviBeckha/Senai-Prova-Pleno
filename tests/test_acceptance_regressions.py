@@ -425,6 +425,19 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Posso calibrar a correia com o motor ligado?",
         "Posso limpar a correia com o motor ligado?",
         "Posso medir a tensão da correia com o motor ligado?",
+        "Encostei na correia com o motor ligado.",
+        "Manipulei a correia com o motor ligado.",
+        "Puxei a correia com o motor ligado.",
+        "Tensionei a correia com o motor ligado.",
+        "Soltei a correia com o motor ligado.",
+        "Calibrei a correia com o motor ligado.",
+        "Limpei a correia com o motor ligado.",
+        "Medi a tensão da correia com o motor ligado.",
+        "Faço manutenção na correia com o motor ligado.",
+        (
+            "O que significa tensionar e posso limpar a correia "
+            "com o motor ligado?"
+        ),
     ),
 )
 def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):

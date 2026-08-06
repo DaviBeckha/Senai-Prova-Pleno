@@ -67,26 +67,34 @@ _TOUCH_FRAGMENT = (
     r"toc(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|"
     r"toqu(?:e|em|ei)"
 )
-_LEAN_FRAGMENT = r"encost(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
-_HANDLE_FRAGMENT = r"manipul(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
-_PULL_FRAGMENT = r"pux(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_LEAN_FRAGMENT = (
+    r"encost(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
+)
+_HANDLE_FRAGMENT = (
+    r"manipul(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
+)
+_PULL_FRAGMENT = r"pux(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
 _STRETCH_FRAGMENT = (
     r"estic(?:ar|ando|ou|o|a|am|amos|aram|ava|avam)|estiqu(?:e|em|ei)"
 )
 _TENSION_FRAGMENT = (
-    r"tension(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+    r"tension(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
 )
-_LOOSEN_FRAGMENT = r"solt(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_LOOSEN_FRAGMENT = (
+    r"solt(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
+)
 _CALIBRATE_FRAGMENT = (
-    r"calibr(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+    r"calibr(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
 )
-_CLEAN_FRAGMENT = r"limp(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em)"
+_CLEAN_FRAGMENT = (
+    r"limp(?:ar|ando|ou|o|a|am|amos|aram|ava|avam|e|em|ei)"
+)
 _MAINTENANCE_PHRASE_FRAGMENT = (
-    r"(?:faz(?:er|endo|ia|iam|emos|em)?|fac(?:a|am)|"
+    r"(?:faz(?:er|endo|ia|iam|emos|em)?|fac(?:o|a|am)|"
     r"fiz(?:emos|eram)?|fez)\s+(?:a\s+)?manutencao"
 )
 _TENSION_MEASUREMENT_FRAGMENT = (
-    r"(?:med(?:ir|indo|iu|e|em|imos|iram|ia|iam)|"
+    r"(?:med(?:ir|indo|iu|i|e|em|imos|iram|ia|iam)|"
     r"mec(?:o|a|am))\s+(?:a\s+)?tensao"
 )
 _ADDITIONAL_PHYSICAL_FRAGMENT = "|".join((
@@ -186,7 +194,24 @@ _EXPLANATION_REQUEST = re.compile(
     r"|\b(?:como funciona|qual (?:e )?a funcao|o que faz|fale sobre)\b"
 )
 _PURE_CONCEPTUAL_REQUEST = re.compile(
-    r"^(?:o que significa|qual (?:e )?a definicao|defina|conceitue)\b"
+    r"^(?:"
+    r"o que significa\b|"
+    r"o que e\s+(?!necessari[oa]s?\b|precis[oa]s?\b)|"
+    r"qual (?:e )?a (?:definicao|funcao|diferenca)\b|"
+    r"para que serve\b|como funciona\b|o que faz\b|fale sobre\b|"
+    r"defina\b|conceitue\b|"
+    r"explique(?:\s+para mim)?\s+(?:"
+    r"o que significa\b|"
+    r"o que e\s+(?!necessari[oa]s?\b|precis[oa]s?\b)|"
+    r"qual (?:e )?a (?:definicao|funcao|diferenca)\b|"
+    r"para que serve\b|como funciona\b"
+    r")"
+    r")"
+)
+_CONCEPTUAL_FOLLOW_UP_ACTION = re.compile(
+    r"\b(?:e|mas|ou|tambem|depois|entao)\s+"
+    r"(?:(?:eu|nos)\s+)?"
+    r"(?:posso|devo|preciso|quero|vou|vamos|pretendo)\b"
 )
 _PROCEDURAL_NOMINAL_CUE = re.compile(
     r"\b(?:procedimento|passo a passo|etapas?|forma de)\b"
@@ -294,7 +319,10 @@ def has_explicit_physical_intervention(value: str) -> bool:
         or _AMBIGUOUS_IMPERATIVE.match(normalized)
     ):
         return True
-    if _PURE_CONCEPTUAL_REQUEST.match(normalized):
+    if (
+        _PURE_CONCEPTUAL_REQUEST.match(normalized)
+        and not _CONCEPTUAL_FOLLOW_UP_ACTION.search(normalized)
+    ):
         return False
     return bool(_EXPLICIT_PHYSICAL_INTERVENTION.search(normalized))
 

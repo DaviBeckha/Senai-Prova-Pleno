@@ -313,6 +313,29 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     assert any("não autoriza a execução" in limitation for limitation in rep.limitations)
 
 
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Como limpar a correia?",
+        "Como tensionar a correia?",
+        "Como fazer manutenção na correia?",
+    ),
+)
+def test_novas_intervencoes_sem_motor_ligado_seguem_fluxo_normal(question):
+    pipeline = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": CORREIA_CHUNK},
+    )
+
+    report = pipeline.answer_question(question)
+
+    assert report.status == "answered"
+    assert report.sources == ("Doc4.pdf",)
+    assert report.message.startswith("Antes de qualquer intervenção")
+    assert "Não realize a intervenção" not in report.message
+
+
 # Formas conjugadas (imperativo/gerundio) dos verbos de intervencao: antes
 # desta correcao, _INTERVENTION so casava o infinitivo de cada verbo, entao
 # "troque a correia com o motor ligado?" nao era reconhecida como intervencao
@@ -623,6 +646,11 @@ def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question)
     (
         "O que significa tensionar uma correia?",
         "O que significa fazer manutenção na correia?",
+        "Para que serve tensionar uma correia com o motor ligado?",
+        (
+            "Explique o que significa fazer manutenção na correia "
+            "com o motor ligado."
+        ),
     ),
 )
 def test_novos_verbos_em_pergunta_conceitual_continuam_explicacao(question):
