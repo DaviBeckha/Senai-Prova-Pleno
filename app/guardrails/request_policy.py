@@ -84,7 +84,7 @@ def inspect_request(question: str) -> RequestPolicyDecision:
             question,
             (
                 "O pedido de usar conhecimento externo foi recusado; a resposta "
-                "será limitada às evidências cadastradas."
+                "será limitada às evidências cadastradas internamente."
             ),
         )
     return RequestPolicyDecision(RequestOutcome.ALLOW, question)
