@@ -525,6 +525,14 @@ def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only(
     (
         "Quais medidas de segurança constam no procedimento da correia?",
         "Quais medidas de segurança são necessárias para a troca da correia?",
+        (
+            "Quais medidas de segurança e bloqueio são necessárias para a "
+            "troca da correia?"
+        ),
+        (
+            "Quais medidas de segurança e cuidados são necessários para a "
+            "troca da correia?"
+        ),
     ),
 )
 def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(

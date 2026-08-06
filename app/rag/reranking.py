@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from app.chat.types import ChatIntent, QuestionAnalysis
+from app.chat.types import QuestionAnalysis
 from app.core.maintenance_intent import (
     ContentRole,
     MaintenanceAction,
@@ -112,15 +112,6 @@ def select_procedure_hits(
             if found is not None:
                 selected.append(found)
         selected.extend(hit for hit in matching if hit not in selected)
-    elif analysis.intent is ChatIntent.EXPLANATION:
-        selected = [
-            hit
-            for hit in ranked
-            if hit.chunk.content_role in {
-                ContentRole.GENERAL,
-                ContentRole.DIAGNOSIS,
-            }
-        ]
     elif analysis.requires_safety:
         selected = []
     else:
