@@ -222,6 +222,29 @@ def test_bloco_obrigatorio_maior_que_orcamento_falha_fechado():
     assert bundle.families[0].omitted_chunks > 0
 
 
+def test_primeiro_procedimento_nao_ultrapassa_saldo_do_orcamento():
+    index = LayeredFakeIndex()
+    analysis = analyze_question(
+        "Qual o procedimento completo para trocar uma correia?"
+    )
+    mandatory_chars = len(index.safety.text) + len(index.validation.text)
+    budget = mandatory_chars + len(index.replacement.text) - 1
+
+    bundle = retrieve_evidence(
+        index,
+        analysis.original,
+        analysis.explicit_families,
+        analysis,
+        k=4,
+        min_score=0.0,
+        complete_max_chars=budget,
+    )
+
+    assert sum(len(item.chunk.text) for item in bundle.items) <= budget
+    assert bundle.families[0].complete is False
+    assert bundle.families[0].omitted_chunks == 1
+
+
 def test_reserva_por_acao_pode_ultrapassar_k_sem_descartar_acao():
     analysis = analyze_question(
         "Como diagnosticar, inspecionar, ajustar, alinhar, lubrificar, trocar "

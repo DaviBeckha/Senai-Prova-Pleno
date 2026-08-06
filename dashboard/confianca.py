@@ -49,7 +49,7 @@ class Confianca:
                 f"Classificação inconclusiva: {len(self.empatadas) + 1} famílias "
                 f"empataram com {self.votos} de {self.total} votos "
                 f"({nomes}). Nenhuma família foi escolhida; confirme os sintomas "
-                "e colete novas medições."
+                "e colete novas medições. Trate cada candidata apenas como hipótese."
             )
         return ""
 

@@ -71,7 +71,7 @@ def _limit_complete(
     used_chars = 0
     for hit in hits:
         size = len(hit.chunk.text)
-        if selected and used_chars + size > max_chars:
+        if used_chars + size > max_chars:
             break
         selected.append(hit)
         used_chars += size
