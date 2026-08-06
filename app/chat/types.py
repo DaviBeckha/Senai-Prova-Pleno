@@ -6,6 +6,8 @@ from app.core.maintenance_intent import MaintenanceAction
 
 class ChatIntent(StrEnum):
     PROCEDURE = "procedure"
+    EXPLANATION = "explanation"
+    FACTUAL = "factual"
     DOCUMENT_STATUS = "document_status"
     HISTORY = "history"
     CLARIFICATION = "clarification"

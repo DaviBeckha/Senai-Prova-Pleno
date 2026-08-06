@@ -363,9 +363,133 @@ def test_controles_deterministicos_nao_chamam_redator():
         "Quantas ocorrencias de correia existem no historico?"
     )
 
-    assert unsafe.status == "refused_unsafe"
+    assert unsafe.status == "answered"
+    assert unsafe.sources == ()
+    assert "Não realize a intervenção" in unsafe.message
+    assert "desligue completamente" in unsafe.message
     assert history.status == "answered"
     assert "2 ocorrências" in history.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Posso alinhar a polia com o motor ligado?",
+        "Posso lubrificar o rolamento com o motor ligado?",
+        "Posso reapertar os parafusos com o motor ligado?",
+        "Posso reparar o conjunto com o motor ligado?",
+        "Nós mexemos na correia com o motor ligado.",
+        "Eles mexeram na correia com o motor ligado.",
+        "Como tratar o defeito da correia com o motor ligado?",
+        "Qual o procedimento da correia com o motor ligado?",
+        "Como consertar a correia com o motor ligado?",
+        "Como relubrificar o rolamento com o motor ligado?",
+        "Mexi na correia com o motor ligado; o que faço?",
+        "A equipe abre a proteção da correia com o motor ligado?",
+        "Abrimos a proteção da correia com o motor ligado; e agora?",
+        "Abri a proteção da correia com o motor ligado; e agora?",
+        "A proteção foi aberta com o motor ligado.",
+        "Explique como ajustar a correia com o motor ligado.",
+        "O que é necessário para ajustar a correia com o motor ligado?",
+        "Explique para mim como abrir a proteção da correia com o motor ligado.",
+        "Explique passo a passo como trocar a correia com o motor ligado.",
+        "Explique a função da correia e abra a proteção com o motor ligado.",
+        "Explique o procedimento para trocar a correia com o motor ligado.",
+        "Explique a forma de ajustar a correia com o motor ligado.",
+        "Explique a função da correia e tente abrir a proteção com o motor ligado.",
+        "Como ajustar a correia para o valor recomendado com o motor ligado?",
+        "Qual o custo para trocar a correia com o motor ligado?",
+        "Explique a função da correia e ajuste a tensão com o motor ligado.",
+        "Explique a função da polia e alinhe o conjunto com o motor ligado.",
+        "Explique a função da correia e aperte o parafuso com o motor ligado.",
+        "Explique a função da correia e instale a peça com o motor ligado.",
+        "Explique a função do rolamento e lubrifique com o motor ligado.",
+        "Explique a função do conjunto e repare a peça com o motor ligado.",
+        "Explique a função da correia e remova a proteção com o motor ligado.",
+        "Explique a função da correia, mas ajuste a tensão com o motor ligado.",
+        "Remova a correia pelo menor custo com o motor ligado.",
+        "Ajuste a correia para o valor recomendado com o motor ligado.",
+        "Instale a peça pelo menor custo com o motor ligado.",
+        "Repare a peça pelo menor custo com o motor ligado.",
+        "Alinhe a polia para o valor recomendado com o motor ligado.",
+        "Aperte o parafuso para o valor recomendado com o motor ligado.",
+        "Lubrifique o rolamento pelo menor custo com o motor ligado.",
+    ),
+)
+def test_intervencao_ligada_nunca_alcanca_indice_ou_redator(question):
+    df = _dataframe("correia", "correia")
+    engine = SimilarityEngine()
+    engine.fit(df)
+    pipeline = PrescriptivePipeline(
+        engine,
+        df,
+        _Registry(),
+        _RaisingIndex(),
+        _RaisingRouter(),
+    )
+
+    report = pipeline.answer_question(question)
+
+    assert report.status == "answered"
+    assert report.sources == ()
+    assert "Não realize a intervenção" in report.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que significa o ajuste da correia com o motor ligado?",
+        "Explique como funciona a correia.",
+        "Como funciona a correia?",
+        "Qual a função da correia?",
+    ),
+)
+def test_explicacao_pura_nao_alcanca_indice_ou_redator(question):
+    df = _dataframe("correia", "correia")
+    engine = SimilarityEngine()
+    engine.fit(df)
+    pipeline = PrescriptivePipeline(
+        engine,
+        df,
+        _Registry(),
+        _RaisingIndex(),
+        _RaisingRouter(),
+    )
+
+    report = pipeline.answer_question(question)
+
+    assert report.status == "insufficient_evidence"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "Não realize a intervenção" not in report.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Qual o custo do reparo da correia com o motor ligado?",
+        "Qual a data da troca da correia?",
+        "O aperto da correia está correto?",
+    ),
+)
+def test_consulta_factual_nao_alcanca_indice_ou_redator(question):
+    df = _dataframe("correia", "correia")
+    engine = SimilarityEngine()
+    engine.fit(df)
+    pipeline = PrescriptivePipeline(
+        engine,
+        df,
+        _Registry(),
+        _RaisingIndex(),
+        _RaisingRouter(),
+    )
+
+    report = pipeline.answer_question(question)
+
+    assert report.status == "insufficient_evidence"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "Não realize a intervenção" not in report.message
 
 
 _TIE_RESULT = SimilarityResult(

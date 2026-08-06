@@ -14,6 +14,8 @@ import pytest
 
 from app.chat.analyzer import analyze_question
 from app.chat.types import ChatIntent
+from app.core.maintenance_intent import ContentRole
+from app.core.text import normalize_text
 from app.data.loader import FEATURE_COLUMNS
 from app.llm.base import GROUNDED_JSON_CONTRACT
 from app.llm.router import Router
@@ -33,6 +35,10 @@ class FakeIndex:
     def search(self, query, doc_family, k=4, min_score=0.0):
         chunk = self._chunks_by_family.get(doc_family)
         return [SearchHit(chunk, 0.9)] if chunk is not None else []
+
+    def chunks_for_family(self, doc_family):
+        chunk = self._chunks_by_family.get(doc_family)
+        return (chunk,) if chunk is not None else ()
 
 
 class FakeRegistry:
@@ -203,32 +209,47 @@ def test_pergunta_de_historico_retorna_numeros_do_occurrence_stats():
 # Seguranca: intervencao com a maquina em funcionamento
 # ---------------------------------------------------------------------------
 
-# Os 9 verbos reconhecidos por _INTERVENTION (app/guardrails/safety.py), na
-# mesma ordem em que aparecem na regex. Cada um precisa recusar quando a
+# Os 14 verbos reconhecidos por _INTERVENTION (app/guardrails/safety.py), na
+# mesma ordem em que aparecem na regex. Cada um precisa orientar quando a
 # pergunta tambem cita a maquina em funcionamento — sem isso a cobertura do
 # guardrail fica dependente de qual verbo o operador escolheu escrever.
 _VERBOS_DE_INTERVENCAO = (
     "ajustar", "apertar", "remover", "instalar",
-    "substituir", "abrir", "desmontar", "corrigir", "trocar",
+    "substituir", "mexer", "abrir", "desmontar", "corrigir", "trocar",
+    "alinhar", "lubrificar", "reapertar", "reparar",
+)
+SAFETY_CHUNK = Chunk(
+    "correia",
+    "Doc4.pdf",
+    "1. Segurança",
+    "Desligar, bloquear e confirmar ausência de energia antes da intervenção.",
+    ("1. Segurança",),
+    ContentRole.SAFETY,
 )
 
 
+def _assert_live_safety_guidance(report):
+    assert report.status == "answered"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "Não realize a intervenção" in report.message
+    assert "EPIs" in report.message
+    assert "desligue completamente" in report.message
+    assert "bloqueio" in report.message
+    assert "ajustar a tensao da correia" not in report.message
+
+
 @pytest.mark.parametrize("verbo", _VERBOS_DE_INTERVENCAO)
-def test_intervencao_com_motor_ligado_e_recusada_para_cada_verbo(verbo):
-    # Fixa o marcador ("motor ligado") e varia o verbo: prova que a recusa
+def test_intervencao_com_motor_ligado_e_orientada_para_cada_verbo(verbo):
+    # Fixa o marcador ("motor ligado") e varia o verbo: prova que a orientacao
     # nao depende de qual verbo de intervencao fisica o operador usou —
-    # todos os 9 reconhecidos por _INTERVENTION disparam a mesma recusa
+    # todos os 14 reconhecidos por _INTERVENTION disparam a mesma orientacao
     # antes de qualquer busca ou geracao.
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
     rep = pipeline.answer_question(f"posso {verbo} a correia com o motor ligado?")
 
-    assert rep.status == "refused_unsafe"
-    assert rep.message == (
-        "Não execute ajuste ou intervenção com o equipamento em "
-        "funcionamento. Interrompa a atividade e siga o procedimento "
-        "de segurança e autorização vigente da empresa."
-    )
+    _assert_live_safety_guidance(rep)
 
 
 # Os outros 5 marcadores reconhecidos por _RUNNING alem de "motor ligado"
@@ -249,17 +270,12 @@ _OUTROS_MARCADORES_DE_MAQUINA_OPERANDO = (
     [pergunta for _, pergunta in _OUTROS_MARCADORES_DE_MAQUINA_OPERANDO],
     ids=[marcador for marcador, _ in _OUTROS_MARCADORES_DE_MAQUINA_OPERANDO],
 )
-def test_intervencao_e_recusada_para_cada_marcador_de_maquina_operando(pergunta):
+def test_intervencao_e_orientada_para_cada_marcador_de_maquina_operando(pergunta):
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
     rep = pipeline.answer_question(pergunta)
 
-    assert rep.status == "refused_unsafe"
-    assert rep.message == (
-        "Não execute ajuste ou intervenção com o equipamento em "
-        "funcionamento. Interrompa a atividade e siga o procedimento "
-        "de segurança e autorização vigente da empresa."
-    )
+    _assert_live_safety_guidance(rep)
 
 
 def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
@@ -286,6 +302,9 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     assert rep.status == "answered"
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
+    assert rep.message.startswith("Antes de qualquer intervenção")
+    assert "EPIs" in rep.message
+    assert "desligue completamente" in rep.message
     assert "substituir a correia e instalar uma nova" in rep.message
     # Segunda regra de safety.py (safety_evidence_limitation, usada em
     # app/pipeline.py): os trechos do fake nao tem vocabulario de seguranca
@@ -303,26 +322,22 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
 _FORMAS_CONJUGADAS_DE_INTERVENCAO = (
     "troque a correia com o motor ligado?",
     "ajuste a correia com a máquina ligada",
+    "mexa na correia com o motor ligado",
     "posso trocar a correia com o motor girando?",
     "instalando a peça com o equipamento ligado",
 )
 
 
 @pytest.mark.parametrize("pergunta", _FORMAS_CONJUGADAS_DE_INTERVENCAO)
-def test_intervencao_e_recusada_para_formas_conjugadas_dos_verbos(pergunta):
+def test_intervencao_e_orientada_para_formas_conjugadas_dos_verbos(pergunta):
     pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
 
     rep = pipeline.answer_question(pergunta)
 
-    assert rep.status == "refused_unsafe"
-    assert rep.message == (
-        "Não execute ajuste ou intervenção com o equipamento em "
-        "funcionamento. Interrompa a atividade e siga o procedimento "
-        "de segurança e autorização vigente da empresa."
-    )
+    _assert_live_safety_guidance(rep)
 
 
-def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida_normalmente():
+def test_pergunta_sobre_funcao_da_abracadeira_nao_retorna_procedimento():
     # "abraçadeira" contem o radical "abr" (de "abrir"). Se _INTERVENTION
     # usasse abr\w* (amplo, como os demais verbos), este substantivo seria
     # casado indevidamente; por isso "abrir" usa uma alternativa mais estreita
@@ -334,9 +349,52 @@ def test_pergunta_com_substantivo_que_contem_radical_de_intervencao_e_respondida
 
     rep = pipeline.answer_question("qual a função da abraçadeira da correia?")
 
-    assert rep.status == "answered"
+    assert rep.status == "insufficient_evidence"
     assert rep.families == ("correia",)
-    assert rep.sources == ("Doc4.pdf",)
+    assert rep.sources == ()
+    assert rep.renderer is None
+    assert "ajustar a tensao" not in normalize_text(rep.message)
+    assert "Antes de qualquer intervenção" not in rep.message
+
+
+@pytest.mark.parametrize(
+    ("pergunta", "status", "expected"),
+    (
+        (
+            "Existe manual para o ajuste da correia com o motor ligado?",
+            "documented",
+            "Existe documento orientativo cadastrado",
+        ),
+        (
+            "Qual foi o ajuste da correia no histórico com o motor ligado?",
+            "answered",
+            "20 ocorrências",
+        ),
+        (
+            "A troca da correia ocorreu com o motor ligado no histórico?",
+            "answered",
+            "20 ocorrências",
+        ),
+    ),
+)
+def test_consulta_informativa_nao_e_substituida_por_orientacao_de_risco(
+    pergunta,
+    status,
+    expected,
+):
+    pipeline = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": CORREIA_CHUNK},
+    )
+
+    rep = pipeline.answer_question(pergunta)
+
+    assert rep.status == status
+    assert expected in rep.message
+    assert rep.sources == ()
+    assert rep.renderer is None
+    assert "Não realize a intervenção" not in rep.message
 
 
 # ---------------------------------------------------------------------------
@@ -404,6 +462,12 @@ def test_analise_preserva_multiplas_acoes_solicitadas():
     assert analysis.requested_actions == ("inspect", "replace")
 
 
+def test_consertar_e_reconhecido_como_acao_de_reparo():
+    analysis = analyze_question("Como consertar uma correia?")
+
+    assert analysis.requested_actions == ("repair",)
+
+
 def test_analise_expoe_condicoes_que_sustentam_substituicao():
     analysis = analyze_question("Como corrigir uma correia com trincas e desgaste?")
 
@@ -435,6 +499,135 @@ def test_verificacoes_de_seguranca_com_inspecao_explicita_preservam_inspecao():
     assert analysis.requires_safety is True
     assert analysis.safety_only is False
     assert analysis.requested_actions == ("inspect",)
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Quais medidas de segurança são necessárias e como trocar a correia?",
+        (
+            "Quais medidas de segurança são necessárias e qual o "
+            "procedimento para trocar a correia?"
+        ),
+        "Quais medidas de segurança são necessárias e as etapas para trocar a correia?",
+    ),
+)
+def test_pedido_de_seguranca_com_segunda_acao_explicita_nao_e_safety_only(
+    question,
+):
+    analysis = analyze_question(question)
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is False
+    assert analysis.requested_actions == ("replace",)
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Quais medidas de segurança constam no procedimento da correia?",
+        "Quais medidas de segurança são necessárias para a troca da correia?",
+        (
+            "Quais medidas de segurança e bloqueio são necessárias para a "
+            "troca da correia?"
+        ),
+        (
+            "Quais medidas de segurança e cuidados são necessários para a "
+            "troca da correia?"
+        ),
+        (
+            "Quais medidas de segurança e etapas de bloqueio para a troca "
+            "da correia?"
+        ),
+        (
+            "Quais medidas de segurança e quais etapas de bloqueio para a "
+            "troca da correia?"
+        ),
+    ),
+)
+def test_acao_citada_como_contexto_nao_descaracteriza_pedido_so_de_seguranca(
+    question,
+):
+    analysis = analyze_question(question)
+
+    assert analysis.requires_safety is True
+    assert analysis.safety_only is True
+
+    report = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": SAFETY_CHUNK},
+    ).answer_question(question)
+    answer = normalize_text(report.message)
+
+    assert report.status == "answered"
+    assert "desligar" in answer
+    assert "ajustar a tensao" not in answer
+    assert "remover a correia antiga" not in answer
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "O que significa o ajuste da correia?",
+        "O que significa alinhamento da polia com o motor ligado?",
+        "Explique o alinhamento da polia.",
+        "Para que serve o ajuste da correia?",
+        "Qual a diferença entre ajuste e alinhamento da polia?",
+        "Como funciona a correia?",
+        "Qual a função da polia?",
+        "O que faz a correia?",
+        "Fale sobre a correia.",
+    ),
+)
+def test_pergunta_explicativa_nao_e_classificada_como_intervencao(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.EXPLANATION
+    assert analysis.requested_actions == ()
+
+    report = _pipeline(
+        _df(["correia", "polia"]),
+        {"correia", "polia"},
+        {"correia": CORREIA_CHUNK, "polia": POLIA_CHUNK},
+    ).answer_question(question)
+
+    assert report.status == "insufficient_evidence"
+    assert report.sources == ()
+    assert report.renderer is None
+    assert "ajustar a tensao" not in normalize_text(report.message)
+    assert "verificar excentricidade" not in normalize_text(report.message)
+    assert "Antes de qualquer intervenção" not in report.message
+    assert "Não realize a intervenção" not in report.message
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Qual o custo do reparo da correia?",
+        "Qual a data da troca da correia?",
+        "O aperto da correia está correto?",
+    ),
+)
+def test_consulta_factual_nominal_nao_e_classificada_como_procedimento(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.FACTUAL
+    assert analysis.requested_actions == ()
+
+
+@pytest.mark.parametrize(
+    "question",
+    (
+        "Como ajustar a correia para o valor recomendado com o motor ligado?",
+        "Qual o custo para trocar a correia com o motor ligado?",
+    ),
+)
+def test_cue_factual_nao_neutraliza_acao_fisica_explicita(question):
+    analysis = analyze_question(question)
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.requested_actions
 
 
 @pytest.mark.parametrize("verb", ("remover", "instalar"))

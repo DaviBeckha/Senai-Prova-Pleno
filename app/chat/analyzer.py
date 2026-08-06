@@ -11,6 +11,8 @@ from app.data.labels import STATE_FAMILIES
 from app.core.maintenance_intent import (
     detect_actions,
     detect_conditions,
+    is_explanation_request,
+    is_factual_request,
     is_safety_only_request,
     is_safety_request,
 )
@@ -43,7 +45,11 @@ def _symptom_candidates(normalized: str) -> tuple[str, ...]:
 
 def analyze_question(question: str) -> QuestionAnalysis:
     normalized = normalize_text(question)
-    requested_actions = detect_actions(normalized)
+    explanation = is_explanation_request(normalized)
+    factual = is_factual_request(normalized)
+    requested_actions = (
+        () if explanation or factual else detect_actions(normalized)
+    )
     conditions = detect_conditions(normalized)
     requires_safety = is_safety_request(normalized)
     safety_only = is_safety_only_request(normalized)
@@ -102,7 +108,15 @@ def analyze_question(question: str) -> QuestionAnalysis:
         return QuestionAnalysis(
             question,
             normalized,
-            ChatIntent.PROCEDURE,
+            (
+                ChatIntent.EXPLANATION
+                if explanation
+                else (
+                    ChatIntent.FACTUAL
+                    if factual
+                    else ChatIntent.PROCEDURE
+                )
+            ),
             explicit,
             negated_families=negated,
             scope=scope,

@@ -7,6 +7,8 @@ from app.chat.context import ChatContext
 from app.chat.responses import (
     clarification_report,
     document_status_report,
+    explanation_report,
+    factual_report,
     history_report,
     out_of_scope_report,
     state_report,
@@ -17,6 +19,7 @@ from app.data.labels import display_label
 from app.guardrails.policy import decide
 from app.guardrails.request_policy import RequestOutcome, inspect_request
 from app.guardrails.safety import (
+    SAFETY_ADVISORY,
     SafetyOutcome,
     assess_question_safety,
     safety_evidence_limitation,
@@ -208,7 +211,7 @@ class PrescriptivePipeline:
             else outcome.answer_status
         )
         return _report(
-            diagnosis_status, outcome.text,
+            diagnosis_status, f"{SAFETY_ADVISORY}\n\n{outcome.text}",
             sources=sorted({c.source for c in chunks}),
             renderer=outcome.renderer,
             degraded=outcome.degraded,
@@ -224,10 +227,10 @@ class PrescriptivePipeline:
         # sensor associado — entao ChatReport nao carrega family_votes.
         analysis = analyze_question(pergunta)
 
-        # Politicas de pedido e de risco fisico vem ANTES do despacho por
-        # intencao: um pedido para revelar o prompt ou para intervir com a
-        # maquina ligada precisa ser recusado independentemente da familia
-        # reconhecida — inclusive quando nenhuma foi.
+        # Politicas do pedido continuam antes de qualquer despacho. Consultas
+        # estritamente factuais saem antes do guardrail fisico: palavras como
+        # "ajuste" e "troca" podem ser substantivos em uma consulta historica
+        # e nao representam uma ordem de intervencao.
         request_policy = inspect_request(pergunta)
         if request_policy.outcome is RequestOutcome.REFUSE_INTERNAL:
             return ChatReport(
@@ -241,23 +244,11 @@ class PrescriptivePipeline:
                 message=request_policy.message,
                 families=analysis.explicit_families,
             )
-        safety = assess_question_safety(pergunta)
-        if safety.outcome is SafetyOutcome.REFUSE_LIVE_INTERVENTION:
-            return ChatReport(
-                status="refused_unsafe",
-                message=safety.message,
-                families=analysis.explicit_families,
-            )
-
         if analysis.intent is ChatIntent.DOCUMENT_STATUS:
             return document_status_report(
                 analysis.explicit_families,
                 self._registry.has_document,
             )
-        if analysis.intent is ChatIntent.CLARIFICATION:
-            return clarification_report(analysis.candidate_families)
-        if analysis.intent is ChatIntent.OUT_OF_SCOPE:
-            return out_of_scope_report()
         if analysis.intent is ChatIntent.STATE:
             return state_report(analysis.explicit_families)
         if analysis.intent is ChatIntent.HISTORY:
@@ -268,7 +259,26 @@ class PrescriptivePipeline:
                     for family in analysis.explicit_families
                 },
             )
+        if analysis.intent is ChatIntent.EXPLANATION:
+            return explanation_report(analysis.explicit_families)
+        if analysis.intent is ChatIntent.FACTUAL:
+            return factual_report(analysis.explicit_families)
 
+        # Toda intencao procedural usa a mesma taxonomia de acoes do
+        # reranking/validador. Com a maquina ligada, a resposta termina aqui e
+        # nunca expoe trechos executaveis do indice ou do modelo.
+        safety = assess_question_safety(pergunta, analysis.requested_actions)
+        if safety.outcome is SafetyOutcome.ADVISE_LIVE_INTERVENTION:
+            return ChatReport(
+                status="answered",
+                message=safety.message,
+                families=analysis.explicit_families,
+            )
+
+        if analysis.intent is ChatIntent.CLARIFICATION:
+            return clarification_report(analysis.candidate_families)
+        if analysis.intent is ChatIntent.OUT_OF_SCOPE:
+            return out_of_scope_report()
         documented = tuple(
             family
             for family in analysis.explicit_families
@@ -357,9 +367,12 @@ class PrescriptivePipeline:
             safety_only=analysis.safety_only,
         )
         outcome = self._pick_router(mode).render(context)
+        message = outcome.text
+        if safety.outcome is SafetyOutcome.ADVISE_INTERVENTION:
+            message = f"{safety.message}\n\n{message}"
         return ChatReport(
             status=outcome.answer_status,
-            message=outcome.text,
+            message=message,
             families=analysis.explicit_families,
             sources=tuple(sorted({item.chunk.source for item in bundle.items})),
             renderer=outcome.renderer,
