@@ -505,8 +505,8 @@ documentadas do validador de fundamentação, seção 5 — `strict=True`: viram
 alguém "consertar" o comportamento sem atualizar o teste), em cerca de **4 minutos** nesta
 máquina de desenvolvimento (Python 3.14, sem GPU). O pipeline de CI (`.github/workflows/ci.yml`)
 roda a mesma suíte contra um subconjunto mais leve das dependências (`requirements-ci.txt`, sem
-`sentence-transformers`/`torch`/`faiss-cpu`) em pouco mais da metade do tempo — ver a
-justificativa dessa escolha logo abaixo do link do workflow.
+`sentence-transformers`/`torch`/`faiss-cpu`) em menos da metade do tempo (~2 min medidos) — a
+justificativa dessa escolha está no comentário de `requirements-ci.txt`.
 
 A estratégia de teste combina quatro camadas: testes de unidade para as regras determinísticas
 (normalização de rótulos, interpretação de pergunta, estatísticas de ocorrência, guardrails de
