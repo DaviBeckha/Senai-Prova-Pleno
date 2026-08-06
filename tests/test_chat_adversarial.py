@@ -269,14 +269,24 @@ def test_intervencao_com_trocar_sem_motor_ligado_e_respondida_normalmente():
     # agressiva a ponto de bloquear perguntas de manutencao comuns feitas com
     # a maquina parada (mesmo comportamento ja observado para os verbos
     # "ajustar" e "substituir", que ja estavam na regra antes deste caso).
-    pipeline = _pipeline(_df(["correia"]), {"correia"}, {"correia": CORREIA_CHUNK})
+    replacement_chunk = Chunk(
+        "correia",
+        "Doc4.pdf",
+        "14. Substituição da Correia",
+        "substituir a correia e instalar uma nova",
+    )
+    pipeline = _pipeline(
+        _df(["correia"]),
+        {"correia"},
+        {"correia": replacement_chunk},
+    )
 
     rep = pipeline.answer_question("posso trocar a correia?")
 
     assert rep.status == "answered"
     assert rep.families == ("correia",)
     assert rep.sources == ("Doc4.pdf",)
-    assert "ajustar a tensao da correia" in rep.message
+    assert "substituir a correia e instalar uma nova" in rep.message
     # Segunda regra de safety.py (safety_evidence_limitation, usada em
     # app/pipeline.py): os trechos do fake nao tem vocabulario de seguranca
     # (desligar/bloqueio/etiquetagem/...), entao a resposta sai com a

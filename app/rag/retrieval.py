@@ -1,29 +1,114 @@
-"""Monta a evidencia que sustenta uma resposta, com identificador e limite.
+"""Recupera e compõe evidências por intenção, segurança e validação."""
 
-Dois modos, escolhidos pela QueryScope da pergunta:
-
-- FOCUSED: busca por similaridade, k trechos por familia, corte em min_score.
-- COMPLETE: trechos em ordem documental ate um teto de caracteres. Quando o
-  teto corta o documento, o bundle carrega uma limitacao explicita — pedir "o
-  procedimento completo" e receber metade sem aviso e pior que receber metade
-  sabendo que e metade.
-"""
-
-from app.chat.types import QueryScope
-from app.rag.search import (
-    EvidenceItem,
-    FamilyEvidence,
-    RetrievalBundle,
+from app.chat.types import QueryScope, QuestionAnalysis
+from app.core.maintenance_intent import (
+    ContentRole,
+    is_intervention_action,
 )
+from app.rag.reranking import rerank_hits, select_procedure_hits
+from app.rag.search import EvidenceItem, FamilyEvidence, RetrievalBundle, SearchHit
 
 
-def _focused_family(index, question, family, k, min_score):
-    hits = index.search(
+def _document_hits(index, family: str, analysis: QuestionAnalysis) -> list[SearchHit]:
+    if not hasattr(index, "chunks_for_family"):
+        return []
+    hits = [
+        SearchHit(chunk, 0.0)
+        for chunk in index.chunks_for_family(family)
+    ]
+    return rerank_hits(hits, analysis)
+
+
+def _first_role(
+    hits: list[SearchHit],
+    role: ContentRole,
+) -> SearchHit | None:
+    candidates = [hit for hit in hits if hit.chunk.content_role == role]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda hit: hit.chunk.document_order)
+
+
+def _deduplicate(hits: list[SearchHit]) -> list[SearchHit]:
+    selected: list[SearchHit] = []
+    seen: set[tuple[str, int, str]] = set()
+    for hit in hits:
+        key = (
+            hit.chunk.source,
+            hit.chunk.document_order,
+            hit.chunk.section,
+        )
+        if key not in seen:
+            selected.append(hit)
+            seen.add(key)
+    return selected
+
+
+def _limit_complete(
+    hits: list[SearchHit],
+    max_chars: int,
+) -> tuple[list[SearchHit], int]:
+    selected: list[SearchHit] = []
+    used_chars = 0
+    for hit in hits:
+        size = len(hit.chunk.text)
+        if selected and used_chars + size > max_chars:
+            break
+        selected.append(hit)
+        used_chars += size
+    return selected, len(hits) - len(selected)
+
+
+def _retrieve_family(
+    index,
+    question: str,
+    family: str,
+    analysis: QuestionAnalysis,
+    *,
+    k: int,
+    min_score: float,
+    complete_max_chars: int,
+) -> FamilyEvidence:
+    candidate_k = max(k * 3, 12)
+    vector_hits = index.search(
         question,
         doc_family=family,
-        k=k,
+        k=candidate_k,
         min_score=min_score,
     )
+    document_hits = _document_hits(index, family, analysis)
+    complete = analysis.scope is QueryScope.COMPLETE
+    procedure_candidates = document_hits if complete and document_hits else vector_hits
+    procedure = select_procedure_hits(
+        procedure_candidates,
+        analysis,
+        k=k,
+        complete=complete,
+    )
+
+    intervention = any(
+        is_intervention_action(action)
+        for action in analysis.requested_actions
+    )
+    safety = (
+        _first_role(document_hits, ContentRole.SAFETY)
+        if analysis.requires_safety or intervention
+        else None
+    )
+    validation = (
+        _first_role(document_hits, ContentRole.VALIDATION)
+        if intervention
+        else None
+    )
+    composed = _deduplicate([
+        *([safety] if safety is not None else []),
+        *procedure,
+        *([validation] if validation is not None else []),
+    ])
+
+    omitted = 0
+    if complete:
+        composed, omitted = _limit_complete(composed, complete_max_chars)
     items = tuple(
         EvidenceItem(
             f"{family}:E{position}",
@@ -31,38 +116,12 @@ def _focused_family(index, question, family, k, min_score):
             hit.chunk,
             hit.score,
         )
-        for position, hit in enumerate(hits, start=1)
+        for position, hit in enumerate(composed, start=1)
     )
-    # complete=False: busca focada nunca representa o documento inteiro.
-    return FamilyEvidence(family, items, complete=False)
-
-
-def _complete_family(index, family, max_chars):
-    selected = []
-    used_chars = 0
-    chunks = index.chunks_for_family(family)
-    for chunk in chunks:
-        # `selected and ...`: o primeiro trecho entra mesmo se sozinho ja
-        # estourar o teto, senao uma familia de trecho unico e grande
-        # devolveria evidencia vazia.
-        if selected and used_chars + len(chunk.text) > max_chars:
-            break
-        selected.append(chunk)
-        used_chars += len(chunk.text)
-    items = tuple(
-        EvidenceItem(
-            f"{family}:E{position}",
-            family,
-            chunk,
-            None,
-        )
-        for position, chunk in enumerate(selected, start=1)
-    )
-    omitted = len(chunks) - len(selected)
     return FamilyEvidence(
         family,
         items,
-        complete=omitted == 0,
+        complete=complete and omitted == 0,
         omitted_chunks=omitted,
     )
 
@@ -71,28 +130,30 @@ def retrieve_evidence(
     index,
     question: str,
     families: tuple[str, ...],
-    scope: QueryScope,
+    analysis: QuestionAnalysis,
     *,
     k: int,
     min_score: float,
     complete_max_chars: int,
 ) -> RetrievalBundle:
-    if scope is QueryScope.COMPLETE:
-        evidence = tuple(
-            _complete_family(index, family, complete_max_chars)
-            for family in families
+    evidence = tuple(
+        _retrieve_family(
+            index,
+            question,
+            family,
+            analysis,
+            k=k,
+            min_score=min_score,
+            complete_max_chars=complete_max_chars,
         )
-    else:
-        evidence = tuple(
-            _focused_family(index, question, family, k, min_score)
-            for family in families
-        )
+        for family in families
+    )
     limitations = tuple(
         (
             f"A evidência de {item.family} omitiu {item.omitted_chunks} trechos "
-            "e não representa o documento completo."
+            "e não representa o procedimento completo."
         )
         for item in evidence
-        if not item.complete and item.omitted_chunks
+        if item.omitted_chunks
     )
     return RetrievalBundle(evidence, limitations)

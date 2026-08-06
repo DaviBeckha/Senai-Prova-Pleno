@@ -27,6 +27,42 @@ class ContentRole(StrEnum):
     GENERAL = "general"
 
 
+_ACTION_ROLES = {
+    MaintenanceAction.DIAGNOSE: frozenset({
+        ContentRole.DIAGNOSIS,
+        ContentRole.INSPECTION,
+    }),
+    MaintenanceAction.INSPECT: frozenset({ContentRole.INSPECTION}),
+    MaintenanceAction.ADJUST: frozenset({ContentRole.ADJUSTMENT}),
+    MaintenanceAction.ALIGN: frozenset({ContentRole.ALIGNMENT}),
+    MaintenanceAction.LUBRICATE: frozenset({ContentRole.LUBRICATION}),
+    MaintenanceAction.REPAIR: frozenset({
+        ContentRole.ADJUSTMENT,
+        ContentRole.ALIGNMENT,
+        ContentRole.LUBRICATION,
+        ContentRole.REPLACEMENT,
+    }),
+    MaintenanceAction.REPLACE: frozenset({ContentRole.REPLACEMENT}),
+    MaintenanceAction.VALIDATE: frozenset({ContentRole.VALIDATION}),
+}
+
+_INTERVENTION_ACTIONS = frozenset({
+    MaintenanceAction.ADJUST,
+    MaintenanceAction.ALIGN,
+    MaintenanceAction.LUBRICATE,
+    MaintenanceAction.REPAIR,
+    MaintenanceAction.REPLACE,
+})
+
+REPLACEMENT_CONDITIONS = frozenset({
+    "dano",
+    "desgaste",
+    "trinca",
+    "contaminacao",
+    "falha_estrutural",
+})
+
+
 _ACTION_PATTERNS = (
     (MaintenanceAction.INSPECT, re.compile(r"\b(?:inspecion\w*|verific\w*)\b")),
     (MaintenanceAction.ADJUST, re.compile(r"\b(?:ajust\w*|apert\w*|reapert\w*)\b")),
@@ -68,6 +104,16 @@ def detect_actions(value: str) -> tuple[MaintenanceAction, ...]:
         for action, pattern in _ACTION_PATTERNS
         if pattern.search(normalized)
     ]
+    specific_correction = {
+        MaintenanceAction.ADJUST,
+        MaintenanceAction.ALIGN,
+        MaintenanceAction.LUBRICATE,
+        MaintenanceAction.REPLACE,
+    }
+    if MaintenanceAction.REPAIR in actions and any(
+        action in specific_correction for action in actions
+    ):
+        actions.remove(MaintenanceAction.REPAIR)
     return tuple(dict.fromkeys(actions))
 
 
@@ -82,6 +128,14 @@ def detect_conditions(value: str) -> frozenset[str]:
 
 def is_safety_request(value: str) -> bool:
     return bool(_SAFETY_REQUEST.search(normalize_text(value)))
+
+
+def roles_for_action(action: MaintenanceAction) -> frozenset[ContentRole]:
+    return _ACTION_ROLES[action]
+
+
+def is_intervention_action(action: MaintenanceAction) -> bool:
+    return action in _INTERVENTION_ACTIONS
 
 
 def classify_content_role(

@@ -114,11 +114,18 @@ class PrescriptivePipeline:
                 stats.total, stats.freq_per_day, [], None, False,
                 result.family_votes, len(result.neighbor_ids))
 
-        hits = self._index.search(f"como corrigir {decision.family}",
-                                  doc_family=decision.family,
-                                  k=self._rag_k,
-                                  min_score=self._rag_min_score)
-        chunks = [hit.chunk for hit in hits]
+        diagnosis_question = f"como corrigir {decision.family}"
+        diagnosis_analysis = analyze_question(diagnosis_question)
+        bundle = retrieve_evidence(
+            self._index,
+            diagnosis_question,
+            (decision.family,),
+            diagnosis_analysis,
+            k=self._rag_k,
+            min_score=self._rag_min_score,
+            complete_max_chars=self._rag_complete_max_chars,
+        )
+        chunks = [item.chunk for item in bundle.items]
         if not chunks:
             # Falha documentada, mas o indice nao devolveu nenhum trecho
             # utilizavel: gerar diagnostico aqui seria infundado (sem fonte,
@@ -218,7 +225,7 @@ class PrescriptivePipeline:
             self._index,
             effective_question,
             documented,
-            analysis.scope,
+            analysis,
             k=self._rag_k,
             min_score=self._rag_min_score,
             complete_max_chars=self._rag_complete_max_chars,
