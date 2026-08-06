@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.core.maintenance_intent import MaintenanceAction
+
 
 class ChatIntent(StrEnum):
     PROCEDURE = "procedure"
@@ -25,6 +27,9 @@ class QuestionAnalysis:
     candidate_families: tuple[str, ...] = ()
     negated_families: tuple[str, ...] = ()
     scope: QueryScope = QueryScope.FOCUSED
+    requested_actions: tuple[MaintenanceAction, ...] = ()
+    conditions: frozenset[str] = frozenset()
+    requires_safety: bool = False
 
     @property
     def needs_clarification(self) -> bool:

@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from app.chat.analyzer import analyze_question
+from app.chat.types import ChatIntent
 from app.data.loader import FEATURE_COLUMNS
 from app.llm.base import GROUNDED_JSON_CONTRACT
 from app.llm.router import Router
@@ -369,3 +370,39 @@ def test_reprovacao_do_validador_degrada_a_resposta_final_do_chat():
     assert rep.degraded is True
     assert rep.validation_errors
     assert any("citação não encontrada" in e for e in rep.validation_errors)
+
+
+def test_esferas_do_rolamento_no_plural_entram_no_escopo():
+    analysis = analyze_question("Como tratar defeito nas esferas do rolamento?")
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.explicit_families == ("rolamento_ball",)
+
+
+def test_falha_combinada_de_rolamento_entra_no_escopo():
+    analysis = analyze_question("Qual o procedimento para falha combinada de rolamento?")
+
+    assert analysis.intent is ChatIntent.PROCEDURE
+    assert analysis.explicit_families == ("rolamento_combination",)
+
+
+def test_analise_preserva_multiplas_acoes_solicitadas():
+    analysis = analyze_question(
+        "Como inspecionar e trocar o rolamento da pista interna?"
+    )
+
+    assert analysis.requested_actions == ("inspect", "replace")
+
+
+def test_analise_expoe_condicoes_que_sustentam_substituicao():
+    analysis = analyze_question("Como corrigir uma correia com trincas e desgaste?")
+
+    assert analysis.conditions == frozenset({"trinca", "desgaste"})
+
+
+def test_analise_identifica_pedido_explicito_de_seguranca():
+    analysis = analyze_question(
+        "Quais verificacoes de seguranca devem ser feitas antes de mexer na correia?"
+    )
+
+    assert analysis.requires_safety is True

@@ -30,6 +30,7 @@ FAMILY_ALIASES: dict[str, tuple[str, ...]] = {
     "rolamento_ball": (
         "rolamento_ball",
         "esfera do rolamento",
+        "esferas do rolamento",
         "elemento rolante",
         "elementos rolantes",
         "bearing ball",
@@ -37,7 +38,9 @@ FAMILY_ALIASES: dict[str, tuple[str, ...]] = {
     "rolamento_combination": (
         "rolamento_combination",
         "falha combinada no rolamento",
+        "falha combinada de rolamento",
         "defeito combinado no rolamento",
+        "defeito combinado de rolamento",
     ),
     "desalinhado": (
         "desalinhado",
