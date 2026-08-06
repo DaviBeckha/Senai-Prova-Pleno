@@ -206,7 +206,7 @@ a seção de elementos rolantes, e o modelo poderia citar a frequência do defei
 toda a aparência de estar fundamentado — o pior tipo de alucinação, porque vem com fonte.
 
 `app/rag/family_sections.py` faz esse recorte na ingestão, e há regressão automatizada contra
-o documento real (`tests/rag/test_family_sections.py`) para pista interna, pista externa e o
+o documento real (`tests/test_rag_family_sections.py`) para pista interna, pista externa e o
 caso combinado.
 
 Vale mostrar também a resposta multifamília: "a correia está frouxa e a polia está com folga"
@@ -229,10 +229,12 @@ modelo a use.
 ~~~
 
 O ponto a narrar no caso 1: o redator não devolve texto, devolve um JSON em que cada ação vem
-amarrada à citação literal que a sustenta. O `Router` confere passo a passo antes de o
-operador ver qualquer coisa — `evidence_id` existente, citação literal, suporte lexical, e
-nenhum número que não esteja na citação. Se um único passo reprovar, a resposta inteira é
-descartada e o operador recebe os trechos crus com `degraded: true`.
+amarrada à citação literal que a sustenta. O `Router` confere seis coisas por passo antes de o
+operador ver qualquer coisa — `evidence_id` existente, família compatível com a evidência,
+citação literal (normalizada), nenhum número que não esteja na citação, suporte lexical mínimo
+de 0,60 e negação sem correspondência entre ação e citação (ver README, seção 5). Se um único
+passo reprovar, a resposta inteira é descartada e o operador recebe os trechos crus com
+`degraded: true`.
 
 Vale mostrar também a limitação de segurança: mesmo quando a resposta é válida, se nenhum
 trecho recuperado falar de parada ou bloqueio, ela sai dizendo que **não autoriza a execução
@@ -303,11 +305,11 @@ diferencial. A tabela abaixo mapeia cada um deles para onde a solução os atend
 |---|---|
 | Arquitetura proposta para implantação do projeto | `README.md`, seção "Arquitetura e fluxo" (diagrama) e "Como rodar" (`docker-compose.yml`, `Dockerfile.api`, `Dockerfile.dashboard`) — Postgres, Ollama, API e dashboard como serviços independentes |
 | Organização do código | Separação por camada em `app/` (`api`, `core`, `data`, `similarity`, `rag`, `llm`, `guardrails`, `pipeline.py`) com contratos explícitos entre módulos (ver README, seção 2) |
-| Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degraded`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`) |
-| Organização do repositório GitHub | Estrutura de diretórios documentada no README (seção 8); histórico de commits atômicos por etapa do pipeline |
-| Versionamento | Schema de banco versionado via Alembic (`migrations/versions/0001_initial.py`); commits atômicos e descritivos |
+| Qualidade da implementação | Guardrail estrutural (não dependente de prompt), degradação automática de LLM com sinalização (`degraded`), tratamento defensivo de dados heterogêneos (`app/similarity/engine.py`, `scripts/simulator.py`); suíte automatizada versionada (195 testes + 2 xfailed documentados — ver README, "Como rodar os testes") validada em CI a cada push/PR (`.github/workflows/ci.yml`) |
+| Organização do repositório GitHub | Estrutura de diretórios documentada no README (seção 8); histórico de commits atômicos por etapa do pipeline; integração contínua no GitHub Actions |
+| Versionamento | Schema de banco versionado via Alembic, quatro migrations incrementais em `migrations/versions/` (`0001_initial.py`, `0002_sensor_readings.py`, `0003_diagnoses_event_fk.py`, `0004_documents_unique_family_title.py`); commits atômicos e descritivos |
 | Documentação | Este `docs/arquitetura.md` + `README.md` (visão geral, diagrama, decisões técnicas justificadas, como rodar, exemplos de request/response) |
-| Interpretação do problema | Guardrail anti-alucinação implementado como decisão de código (RF4); kNN por similaridade em vez de classificador pré-treinado, alinhado à frase do enunciado "não depende necessariamente da classificação prévia de falhas conhecidas" |
+| Interpretação do problema | Guardrail anti-alucinação implementado como decisão de código (RF4); kNN por similaridade em vez de classificador pré-treinado, alinhado à frase do enunciado "não depende necessariamente da classificação prévia de falhas conhecidas"; registro de novos documentos pelo usuário (RF5) completo — persistência em disco (`data_uploads/`) e no Postgres (`Document`, com `UniqueConstraint` em família+título via `migrations/versions/0004_documents_unique_family_title.py`), reidratação do índice vetorial após reinício (`scripts/bootstrap.py::ingest_registry_documents`) e efeito imediato na próxima consulta, sem reiniciar a API |
 | Entendimento dos objetivos do projeto | README, seção 1 (visão geral) e seção 4 (desafios reais dos dados) — decisões justificadas em cima dos dados reais fornecidos, não de um dataset idealizado |
 
 ### Avaliação da entrevista
