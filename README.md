@@ -14,7 +14,7 @@ Para avaliar o projeto sem percorrer toda a documentação, use estes atalhos:
 - [Roteiro determinístico de demonstração](demo/README.md)
 - [Endpoints e exemplos](#7-endpoints-exemplos-de-requestresponse)
 - [Testes e CI](#66-como-rodar-os-testes)
-- [Limitações conhecidas e evolução](#9-evolução-futura)
+- [Limitações conhecidas e evolução](#9-limitações-conhecidas-e-evolução-futura)
 
 O caminho recomendado usa Docker para Ollama, API e dashboard, mas mantém o
 **PostgreSQL externo ao stack**. Assim, a mesma aplicação pode conectar ao banco instalado
@@ -126,9 +126,11 @@ e GPU de 16 GB**. O modo offline (padrão do sistema) foi dimensionado para essa
   roda confortavelmente em CPU ou GPU. Importante não confundir os dois índices em memória
   do sistema: o **kNN (scikit-learn `NearestNeighbors`)** é ajustado sobre os **166.796
   registros históricos** de sensor (`app/similarity/engine.py`); o **FAISS**
-  (`app/rag/index.py`) indexa apenas os **337 trechos** extraídos dos 6 documentos de
-  procedimento (chunking por seção, uma vez no bootstrap) — duas ordens de grandeza menor,
-  logo sem custo relevante de RAM mesmo reconstruído inteiramente em memória a cada subida.
+  (`app/rag/index.py`) indexa apenas os **245 trechos** extraídos dos 6 documentos de
+  procedimento (173 trechos distintos; a base de rolamentos é indexada uma vez por subtipo
+  — ver `PDF_MAP` em `scripts/bootstrap.py` —, e o log do bootstrap imprime a contagem por
+  família) — duas ordens de grandeza menor, logo sem custo relevante de RAM mesmo
+  reconstruído inteiramente em memória a cada subida.
 - O motor de similaridade (kNN) roda em CPU: o ajuste (`fit`) sobre as 166.796 linhas leva
   ~1 segundo após o carregamento do dataset, e cada consulta (`query`) responde em
   milissegundos (medições locais: ~5-8 ms por evento, média ~5,4 ms) — não há necessidade de
@@ -1149,7 +1151,89 @@ data_uploads/   # runtime, NÃO versionado (.gitignore) — documentos cadastrad
                 # POST /documentos; volume nomeado `uploads` no docker-compose.yml (seção 6.5)
 ```
 
-## 9. Evolução futura
+## 9. Limitações conhecidas e evolução futura
+
+### 9.1 Limitações conhecidas
+
+Os itens abaixo foram **medidos** neste projeto, não estimados. A rodada de referência são
+102 requisições com `qwen2.5:7b-instruct` em GPU (RTX 4070 SUPER, ~7 GB de VRAM ocupados),
+sendo 91 ao `POST /chat` e 11 ao `POST /eventos`. O bloco principal cruza sistematicamente
+as 10 famílias documentadas com 7 intenções de manutenção (diagnóstico, inspeção, correção,
+substituição, alinhamento, validação e segurança), sem selecionar as perguntas que
+funcionam — o que faz desta uma medida deliberadamente severa.
+
+Das 91 requisições de chat: **57 respondidas** — 35 fundamentadas pelo modelo (61%) e 22
+degradadas para o template extrativo — e **34 contidas pelo guardrail**, distribuídas em
+`evidencia_insuficiente` (25), `fora_de_escopo` (4), `recusado_interno` (2),
+`sem_documento` (2) e `recusado_seguranca` (1). Nenhuma injeção de prompt produziu resposta
+fora das evidências cadastradas. Latência do conjunto: mediana 4,8 s, p90 7,4 s, máxima
+9,5 s.
+
+A taxa varia bastante com a intenção da pergunta: `inspecionar` e `segurança` nunca foram
+contidas, enquanto perguntas de diagnóstico ("quais os sintomas de…") não produziram
+nenhuma resposta fundamentada nas 10 famílias. Os dois itens seguintes explicam por quê.
+
+Cada limitação vem com a causa localizada no código e a correção identificada. Nenhuma foi
+aplicada no prazo desta entrega por exigir o mesmo ciclo de medição que originou os
+achados da seção 5 — corrigir sem medir de novo trocaria um problema conhecido por um
+desconhecido.
+
+Cada limitação vem com a causa localizada no código e a correção identificada. Nenhuma foi
+aplicada no prazo desta entrega por exigir o mesmo ciclo de medição que originou os
+achados da seção 5 — corrigir sem medir de novo trocaria um problema conhecido por um
+desconhecido.
+
+**1. O corte por similaridade precede o reranking por intenção.** Em
+`app/rag/retrieval.py`, a busca vetorial aplica `RAG_MIN_SCORE` (0.82) antes de
+`select_procedure_hits`. O reranqueador já bonifica em `+0.35` o trecho cujo papel
+corresponde à ação pedida (`app/rag/reranking.py`), mas só reordena o que sobreviveu ao
+corte. Consequência: uma pergunta como "como alinhar uma polia?" pode ser contida por
+`evidencia_insuficiente` embora o documento de polias contenha trechos classificados como
+`alignment` — o conteúdo existe, a recuperação não o traz. Responde por 25 das 34
+contenções, concentrado em ações específicas: `alinhar` e `substituir` foram contidas em 6
+das 10 famílias, e as quatro famílias de rolamento concentram as contenções restantes.
+A contenção é honesta (o sistema não inventa), mas é mais restritiva que o necessário.
+Correção prevista: quando a ação exige um papel e nenhum trecho dele sobrevive ao corte,
+refazer a busca com piso reduzido restrita àquele papel, antes de decidir pela contenção.
+
+**2. A validação de fundamentação rejeita citações não contíguas.** O terceiro gate exige
+que `quote` seja substring literal do trecho (`app/llm/grounding.py`). Na prática o modelo
+local costuma "costurar" a citação — juntar o título da seção ao item de lista, pulando o
+conteúdo intermediário — e o rascunho inteiro é invalidado. Some-se a isso o limiar de
+suporte lexical de 0.60, que rejeita paráfrase próxima. Juntas, as duas conferências
+respondem pelas 22 degradações da rodada, com a citação não contígua predominando de longe
+(61 reprovações de passo, contra 9 por suporte lexical). **Esse comportamento é conservador por
+construção**: na dúvida o operador recebe os trechos recuperados com `degraded: true` e o
+motivo em `erros_de_validacao`, em vez de uma orientação que o sistema não conseguiu
+verificar. O custo é rejeitar também redações corretas. Correção prevista: validar a
+citação por fragmentos literais em ordem crescente de posição, preservando a garantia de
+literalidade e a rejeição de recombinação que inverta o sentido da fonte.
+
+**3. O vocabulário de famílias é um catálogo curado, sem correspondência aproximada.**
+`app/chat/catalog.py` casa aliases literais e contíguos, por decisão de projeto: fuzzy
+matching sobre nome de família arriscaria rotear uma pergunta para o procedimento errado,
+que neste domínio é pior do que não responder. O custo é que formulações fora do catálogo
+caem em `fora_de_escopo` — "como inspecionar e lubrificar o rolamento" (sem indicar qual
+das quatro famílias de rolamento) e "alinhar o motor elétrico" (sem a palavra
+"desalinhamento") são dois exemplos observados. Ampliar o catálogo é trivial; o caminho
+melhor, porém, é um estado explícito de desambiguação ("qual rolamento: pista interna,
+externa, esferas ou combinada?"), que altera o contrato da API e por isso ficou fora deste
+prazo.
+
+**4. A restrição de fonte externa contém o conteúdo, mas não aparece no status.** Pedidos
+do tipo "use a internet e sua experiência" são reescritos por
+`app/guardrails/request_policy.py` para uma formulação canônica, e a resposta permanece
+integralmente fundamentada nas evidências cadastradas — a contenção material funciona. O
+status devolvido, porém, é `respondido`, sem sinalizar ao cliente que a fonte foi
+restringida. É diferença de sinalização, não de segurança.
+
+Duas características que podem ser lidas como limitação, mas são **intencionais**: a
+concordância de ~46% entre o voto do kNN e o rótulo original (analisada na seção 4d, com a
+distribuição completa de votos exposta em toda resposta em vez de escondida atrás de um
+rótulo único) e a abstenção em caso de empate no topo da votação, que devolve
+`diagnostico_inconclusivo` em vez de escolher arbitrariamente entre famílias empatadas.
+
+### 9.2 Evolução futura
 
 Fora de escopo deliberado para o prazo desta entrega (YAGNI), registrado aqui como caminho
 natural de evolução:
